@@ -1,0 +1,30 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Avatar uploads - users can only upload to their own folder
+    match /avatars/{userId}/{fileName} {
+      // Allow read access to all avatars (public)
+      allow read: if true;
+      
+      // Allow write access only to the user's own avatar folder
+      allow write: if request.auth != null && 
+        request.auth.uid == userId &&
+        // Validate file type
+        request.resource.contentType.matches('image/.*') &&
+        // Validate file size (5MB max)
+        request.resource.size <= 5 * 1024 * 1024 &&
+        // Validate file extension
+        fileName.matches('.*\\.(jpg|jpeg|png|webp|heic|heif)');
+      
+      // Allow delete access only to the user's own avatars
+      allow delete: if request.auth != null && 
+        request.auth.uid == userId;
+    }
+    
+    // Default: deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

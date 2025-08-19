@@ -1,0 +1,72 @@
+# fly.toml app configuration file generated for matcha-backend on 2024-01-01T00:00:00Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+
+app = "matcha-backend-h47"
+primary_region = "iad"  # Washington DC - change to your preferred region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+
+[experimental]
+  enable_consul = true
+
+[processes]
+  app = "node src/app.js"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  processes = ["app"]
+
+  [[services.ports]]
+    force_https = true
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+    type = "connections"
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"
+
+  [[services.http_checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    protocol = "http"
+    restart_limit = 0
+    timeout = "5s"
+    tls_skip_verify = false
+
+[metrics]
+  port = 9091
+  path = "/metrics"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# Secrets will be set via: fly secrets set KEY=value
+# Required secrets:
+# - FIREBASE_PROJECT_ID
+# - GOOGLE_APPLICATION_CREDENTIALS_JSON (base64 encoded service account)
+# - ALLOW_ORIGINS
+# - FRONTEND_URL
+# - LOG_REDACT_KEYS
+

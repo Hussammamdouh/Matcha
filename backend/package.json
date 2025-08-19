@@ -1,0 +1,80 @@
+{
+  "name": "matcha-backend",
+  "version": "1.0.0",
+  "description": "Matcha - Women-only anonymous social application backend",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "prepare": "husky install",
+    "seed": "node scripts/seed.js",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "emulators": "firebase emulators:start --only auth,firestore,storage",
+    "fly:deploy": "fly deploy",
+    "fly:secrets": "fly secrets set",
+    "fly:logs": "fly logs",
+    "fly:status": "fly status",
+    "fly:scale": "fly scale",
+    "docker:build": "docker build -t matcha-backend .",
+    "docker:run": "docker run -p 8080:8080 matcha-backend"
+  },
+  "keywords": ["matcha", "social", "authentication", "kyc", "firebase"],
+  "author": "Matcha Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "firebase-admin": "^12.0.0",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "hpp": "^0.2.3",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "winston": "^3.11.0",
+    "winston-cloud-logging": "^1.0.0",
+    "uuid": "^9.0.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "swagger-ui-express": "^5.0.0",
+    "swagger-jsdoc": "^6.2.8",
+    "node-cron": "^3.0.3",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.13"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "eslint": "^8.55.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "prettier": "^3.1.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/app.js",
+      "!src/config/**"
+    ]
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  }
+}
