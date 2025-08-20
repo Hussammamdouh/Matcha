@@ -1,4 +1,4 @@
-const { getStorage } = require('firebase-admin/storage');
+const { getStorage } = require('../firebase');
 const { createRequestLogger } = require('./logger');
 
 // Maximum file size: 5MB
@@ -11,7 +11,7 @@ const ALLOWED_TYPES = [
   'image/png',
   'image/webp',
   'image/heic',
-  'image/heif'
+  'image/heif',
 ];
 
 /**
@@ -23,7 +23,7 @@ const ALLOWED_TYPES = [
  */
 async function generateAvatarUploadUrl(userId, fileName, contentType) {
   const logger = createRequestLogger();
-  
+
   try {
     // Validate file type
     if (!ALLOWED_TYPES.includes(contentType)) {
@@ -39,12 +39,12 @@ async function generateAvatarUploadUrl(userId, fileName, contentType) {
 
     const storage = getStorage();
     const bucket = storage.bucket();
-    
+
     // Create file path: avatars/{userId}/{timestamp}_{random}.{extension}
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 15);
     const filePath = `avatars/${userId}/${timestamp}_${random}.${extension}`;
-    
+
     // Generate signed URL for upload
     const [signedUrl] = await bucket.file(filePath).getSignedUrl({
       action: 'write',
@@ -87,7 +87,7 @@ async function generateAvatarUploadUrl(userId, fileName, contentType) {
 function getAvatarPublicUrl(filePath) {
   const storage = getStorage();
   const bucket = storage.bucket();
-  
+
   // Make the file publicly readable
   return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
 }
@@ -99,13 +99,13 @@ function getAvatarPublicUrl(filePath) {
  */
 async function deleteAvatar(filePath) {
   const logger = createRequestLogger();
-  
+
   try {
     const storage = getStorage();
     const bucket = storage.bucket();
-    
+
     await bucket.file(filePath).delete();
-    
+
     logger.info('Avatar file deleted', {
       filePath,
     });
@@ -125,29 +125,29 @@ async function deleteAvatar(filePath) {
  */
 function validateAvatarFile(file) {
   const errors = [];
-  
+
   if (!file) {
     errors.push('No file provided');
     return { isValid: false, errors };
   }
-  
+
   // Check file size
   if (file.size > MAX_FILE_SIZE) {
     errors.push(`File size exceeds maximum limit of ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
   }
-  
+
   // Check file type
   if (!ALLOWED_TYPES.includes(file.mimetype)) {
     errors.push(`Invalid file type. Allowed types: ${ALLOWED_TYPES.join(', ')}`);
   }
-  
+
   // Check file extension
   const extension = file.originalname.split('.').pop()?.toLowerCase();
   const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
   if (!validExtensions.includes(extension)) {
     errors.push(`Invalid file extension. Allowed extensions: ${validExtensions.join(', ')}`);
   }
-  
+
   return {
     isValid: errors.length === 0,
     errors,
@@ -162,4 +162,5 @@ module.exports = {
   MAX_FILE_SIZE,
   ALLOWED_TYPES,
 };
+
 

@@ -1,8 +1,8 @@
 const nodemailer = require('nodemailer');
 const { config } = require('../config');
-const { createLogger } = require('./logger');
+const { createModuleLogger } = require('./logger');
 
-const logger = createLogger();
+const logger = createModuleLogger();
 
 /**
  * Render a minimal HTML template based on template key and data

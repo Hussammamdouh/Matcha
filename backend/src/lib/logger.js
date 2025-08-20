@@ -1,170 +1,139 @@
-const winston = require('winston');
+const pino = require('pino');
 const { config } = require('../config');
 
-/**
- * Custom format for development logging
- */
-const devFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.colorize(),
-  winston.format.printf(({ timestamp, level, message, ...meta }) => {
-    let msg = `${timestamp} [${level}]: ${message}`;
-    if (Object.keys(meta).length > 0) {
-      msg += ` ${JSON.stringify(meta)}`;
-    }
-    return msg;
-  })
-);
+// Fields that should be redacted from logs
+const REDACTED_FIELDS = [
+  'password',
+  'token',
+  'secret',
+  'key',
+  'authorization',
+  'cookie',
+  'session',
+  'creditCard',
+  'ssn',
+  'phone',
+  'email',
+  'address',
+  'ip',
+  'userAgent',
+  'fingerprint',
+  'deviceId',
+  'firebaseToken',
+  'idToken',
+  'refreshToken',
+  'apiKey',
+  'privateKey',
+  'clientSecret'
+];
 
-/**
- * JSON format for production logging
- */
-const prodFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.errors({ stack: true }),
-  winston.format.json()
-);
-
-/**
- * Create logger instance based on environment
- */
-function createLogger() {
-  const transports = [];
-
-  // Determine logging target: console | file | gcp
-  const target = config.logging.target || 'console';
-
-  if (target === 'gcp') {
-    try {
-      const { CloudLoggingWinston } = require('winston-cloud-logging');
-      transports.push(
-        new CloudLoggingWinston({
-          logName: 'matcha-backend',
-          projectId: config.firebase.projectId,
-          resource: {
-            type: 'cloud_run_revision',
-            labels: {
-              service_name: 'matcha-backend',
-              revision_name: process.env.K_REVISION || 'unknown',
-            },
-          },
-        })
-      );
-    } catch (error) {
-      console.warn('Cloud Logging transport not available, falling back to console');
-      transports.push(new winston.transports.Console());
-    }
-  } else if (target === 'file') {
-    transports.push(new winston.transports.File({ filename: config.logging.filePath }));
-  } else {
-    transports.push(new winston.transports.Console());
+// Create redaction function
+function redactSensitiveData(obj, path = '') {
+  if (!obj || typeof obj !== 'object') {
+    return obj;
   }
 
-  return winston.createLogger({
-    level: config.logging.level,
-    format: config.isProduction ? prodFormat : devFormat,
-    transports,
-    // Handle uncaught exceptions and unhandled rejections
-    exceptionHandlers: [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          winston.format.errors({ stack: true }),
-          winston.format.json()
-        ),
-      }),
-    ],
-    rejectionHandlers: [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.timestamp(),
-          winston.format.errors({ stack: true }),
-          winston.format.json()
-        ),
-      }),
-    ],
-  });
-}
-
-/**
- * Create request logger with request ID
- * @param {string} requestId - Unique request identifier
- * @returns {winston.Logger} Logger instance with request context
- */
-function createRequestLogger(requestId) {
-  const logger = createLogger();
-  
-  // Add request context to all log messages
-  const requestLogger = {
-    info: (message, meta = {}) => logger.info(message, { ...meta, requestId }),
-    error: (message, meta = {}) => logger.error(message, { ...meta, requestId }),
-    warn: (message, meta = {}) => logger.warn(message, { ...meta, requestId }),
-    debug: (message, meta = {}) => logger.debug(message, { ...meta, requestId }),
-    log: (level, message, meta = {}) => logger.log(level, message, { ...meta, requestId }),
-  };
-
-  return requestLogger;
-}
-
-/**
- * Redact sensitive information from log messages
- * @param {any} data - Data to redact
- * @returns {any} Redacted data
- */
-function redactSensitiveData(data) {
-  if (typeof data !== 'object' || data === null) {
-    return data;
+  if (Array.isArray(obj)) {
+    return obj.map((item, index) => redactSensitiveData(item, `${path}[${index}]`));
   }
 
-  const sensitiveFields = [
-    'password',
-    'token',
-    'secret',
-    'apiKey',
-    'authToken',
-    'refreshToken',
-    'idToken',
-    'accessToken',
-    'privateKey',
-    'credential',
-  ];
-
-  const redacted = { ...data };
-
-  for (const field of sensitiveFields) {
-    if (redacted[field]) {
-      redacted[field] = '[REDACTED]';
-    }
-  }
-
-  // Recursively redact nested objects
-  for (const key in redacted) {
-    if (typeof redacted[key] === 'object' && redacted[key] !== null) {
-      redacted[key] = redactSensitiveData(redacted[key]);
+  const redacted = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const currentPath = path ? `${path}.${key}` : key;
+    
+    if (REDACTED_FIELDS.some(field => 
+      key.toLowerCase().includes(field.toLowerCase()) ||
+      currentPath.toLowerCase().includes(field.toLowerCase())
+    )) {
+      redacted[key] = '[REDACTED]';
+    } else if (typeof value === 'object' && value !== null) {
+      redacted[key] = redactSensitiveData(value, currentPath);
+    } else {
+      redacted[key] = value;
     }
   }
 
   return redacted;
 }
 
-/**
- * Log HTTP request details
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next function
- */
+// Create Pino logger instance
+const logger = pino({
+  level: config.logLevel || 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+  formatters: {
+    level: (label) => ({ level: label }),
+    log: (object) => {
+      // Redact sensitive data from all log objects
+      return redactSensitiveData(object);
+    }
+  },
+  serializers: {
+    req: (req) => ({
+      id: req.id,
+      method: req.method,
+      url: req.url,
+      headers: redactSensitiveData(req.headers),
+      query: redactSensitiveData(req.query),
+      body: redactSensitiveData(req.body),
+      ip: '[REDACTED]',
+      userAgent: '[REDACTED]'
+    }),
+    res: (res) => ({
+      statusCode: res.statusCode,
+      headers: redactSensitiveData(res.getHeaders())
+    }),
+    err: (err) => ({
+      type: err.type,
+      message: err.message,
+      stack: err.stack,
+      code: err.code,
+      statusCode: err.statusCode
+    })
+  },
+  transport: config.isDevelopment ? {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'SYS:standard',
+      ignore: 'pid,hostname'
+    }
+  } : undefined
+});
+
+// Create request-specific logger
+function createRequestLogger(requestId) {
+  return logger.child({ requestId });
+}
+
+// Create module-specific logger
+function createModuleLogger(moduleName) {
+  return logger.child({ module: moduleName });
+}
+
+// Create operation-specific logger with tracing
+function createOperationLogger(operation, context = {}) {
+  return logger.child({ 
+    operation,
+    traceId: context.traceId,
+    spanId: context.spanId,
+    ...context
+  });
+}
+
+// Log request with redaction
 function logRequest(req, res, next) {
   const startTime = Date.now();
-  const requestId = req.id || 'unknown';
-
+  
+  // Create request logger
+  const requestLogger = createRequestLogger(req.id);
+  
   // Log request start
-  const logger = createRequestLogger(requestId);
-  logger.info('HTTP Request', {
+  requestLogger.info('Request started', {
     method: req.method,
-    url: req.url,
-    userAgent: req.get('User-Agent'),
-    ip: req.ip,
-    userId: req.user?.uid,
+    url: req.originalUrl,
+    userAgent: '[REDACTED]',
+    ip: '[REDACTED]',
+    userId: req.user?.uid || 'anonymous'
   });
 
   // Override res.end to log response
@@ -172,12 +141,12 @@ function logRequest(req, res, next) {
   res.end = function(chunk, encoding) {
     const duration = Date.now() - startTime;
     
-    logger.info('HTTP Response', {
+    requestLogger.info('Request completed', {
       method: req.method,
-      url: req.url,
+      url: req.originalUrl,
       statusCode: res.statusCode,
       duration: `${duration}ms`,
-      userId: req.user?.uid,
+      userId: req.user?.uid || 'anonymous'
     });
 
     originalEnd.call(this, chunk, encoding);
@@ -186,28 +155,157 @@ function logRequest(req, res, next) {
   next();
 }
 
-/**
- * Log error with context
- * @param {Error} error - Error object
- * @param {Object} context - Additional context
- * @param {string} requestId - Request ID for correlation
- */
-function logError(error, context = {}, requestId = null) {
-  const logger = requestId ? createRequestLogger(requestId) : createLogger();
+// Log error with context
+function logError(error, context = {}) {
+  const errorLogger = logger.child(context);
   
-  logger.error('Application Error', {
-    message: error.message,
-    stack: error.stack,
-    name: error.name,
-    code: error.code,
-    ...redactSensitiveData(context),
+  errorLogger.error('Error occurred', {
+    error: {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      statusCode: error.statusCode
+    },
+    context
   });
 }
 
+// Log security event
+function logSecurityEvent(event, details, context = {}) {
+  const securityLogger = logger.child({ 
+    category: 'security',
+    ...context 
+  });
+  
+  securityLogger.warn('Security event', {
+    event,
+    details: redactSensitiveData(details),
+    context
+  });
+}
+
+// Log performance metrics
+function logPerformance(operation, duration, context = {}) {
+  const perfLogger = logger.child({ 
+    category: 'performance',
+    ...context 
+  });
+  
+  perfLogger.info('Performance metric', {
+    operation,
+    duration: `${duration}ms`,
+    context
+  });
+}
+
+// Log database operation
+function logDatabaseOperation(operation, collection, documentId, context = {}) {
+  const dbLogger = logger.child({ 
+    category: 'database',
+    ...context 
+  });
+  
+  dbLogger.debug('Database operation', {
+    operation,
+    collection,
+    documentId,
+    context
+  });
+}
+
+// Log storage operation
+function logStorageOperation(operation, bucket, path, context = {}) {
+  const storageLogger = logger.child({ 
+    category: 'storage',
+    ...context 
+  });
+  
+  storageLogger.debug('Storage operation', {
+    operation,
+    bucket,
+    path,
+    context
+  });
+}
+
+// Log rate limiting event
+function logRateLimitEvent(ip, endpoint, userId, context = {}) {
+  const rateLimitLogger = logger.child({ 
+    category: 'rateLimit',
+    ...context 
+  });
+  
+  rateLimitLogger.warn('Rate limit exceeded', {
+    ip: '[REDACTED]',
+    endpoint,
+    userId: userId || 'anonymous',
+    context
+  });
+}
+
+// Log authentication event
+function logAuthEvent(event, userId, success, context = {}) {
+  const authLogger = logger.child({ 
+    category: 'authentication',
+    ...context 
+  });
+  
+  const level = success ? 'info' : 'warn';
+  authLogger[level]('Authentication event', {
+    event,
+    userId,
+    success,
+    context
+  });
+}
+
+// Log moderation action
+function logModerationAction(action, targetType, targetId, moderatorId, details, context = {}) {
+  const modLogger = logger.child({ 
+    category: 'moderation',
+    ...context 
+  });
+  
+  modLogger.info('Moderation action', {
+    action,
+    targetType,
+    targetId,
+    moderatorId,
+    details: redactSensitiveData(details),
+    context
+  });
+}
+
+// Log feature flag usage
+function logFeatureFlag(flag, userId, enabled, context = {}) {
+  const flagLogger = logger.child({ 
+    category: 'featureFlag',
+    ...context 
+  });
+  
+  flagLogger.debug('Feature flag accessed', {
+    flag,
+    userId,
+    enabled,
+    context
+  });
+}
+
+// Export logger functions
 module.exports = {
-  createLogger,
+  logger,
   createRequestLogger,
-  redactSensitiveData,
+  createModuleLogger,
+  createOperationLogger,
   logRequest,
   logError,
+  logSecurityEvent,
+  logPerformance,
+  logDatabaseOperation,
+  logStorageOperation,
+  logRateLimitEvent,
+  logAuthEvent,
+  logModerationAction,
+  logFeatureFlag,
+  redactSensitiveData
 };

@@ -4,7 +4,7 @@ const cors = require('cors');
 const hpp = require('hpp');
 const { config, validateConfig, features } = require('./config');
 const { initializeFirebase } = require('./lib/firebase');
-const { createLogger } = require('./lib/logger');
+const { createRequestLogger } = require('./lib/logger');
 const { logRequest } = require('./lib/logger');
 const requestIdMiddleware = require('./middlewares/requestId');
 const { errorHandler, notFoundHandler } = require('./middlewares/error');
@@ -21,6 +21,8 @@ const auditRoutes = require('./modules/audit/routes');
 const webhookRoutes = require('./webhooks/routes');
 const jobRoutes = require('./jobs/routes');
 
+// Feed-related route modules will be imported after Firebase initialization
+
 // Import health check routes
 const healthRoutes = require('./routes/health');
 
@@ -28,7 +30,7 @@ const healthRoutes = require('./routes/health');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./docs/swagger');
 
-const logger = createLogger();
+const logger = createRequestLogger();
 
 /**
  * Create and configure Express application
@@ -52,43 +54,47 @@ function createApp() {
   app.set('trust proxy', true);
 
   // Security middleware
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
-        objectSrc: ["'none'"],
-        mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          mediaSrc: ["'self'"],
+          frameSrc: ["'none'"],
+        },
       },
-    },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    },
-    noCache: true,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-  }));
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
+      },
+      noCache: true,
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    })
+  );
 
   // CORS configuration
-  app.use(cors({
-    origin: config.cors.origins,
-    credentials: config.cors.credentials,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Request-ID',
-      'X-Device-ID',
-      'X-Client-Version',
-    ],
-    exposedHeaders: ['X-Request-ID', 'X-Rate-Limit-Remaining'],
-  }));
+  app.use(
+    cors({
+      origin: config.cors.origins,
+      credentials: config.cors.credentials,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Request-ID',
+        'X-Device-ID',
+        'X-Client-Version',
+      ],
+      exposedHeaders: ['X-Request-ID', 'X-Rate-Limit-Remaining'],
+    })
+  );
 
   // Request parsing middleware
   app.use(express.json({ limit: '10mb' }));
@@ -133,12 +139,52 @@ function createApp() {
   app.use('/api/v1/me/devices', deviceRoutes);
   app.use('/api/v1/me/sessions', sessionRoutes);
 
+  // Feed-related routes (imported after Firebase initialization)
+  const communityRoutes = require('./modules/communities/routes');
+  const postRoutes = require('./modules/posts/routes');
+  const commentRoutes = require('./modules/comments/routes');
+  const reportRoutes = require('./modules/reports/routes');
+  const searchRoutes = require('./modules/search/routes');
+  const storageRoutes = require('./modules/storage/routes');
+
+  // Chat routes (imported after Firebase initialization)
+  const chatRoutes = require('./modules/chat/routes');
+
+  app.use('/api/v1/communities', communityRoutes);
+  app.use('/api/v1/posts', postRoutes);
+  app.use('/api/v1/comments', commentRoutes);
+  app.use('/api/v1/reports', reportRoutes);
+  app.use('/api/v1/search', searchRoutes);
+  app.use('/api/v1/storage', storageRoutes);
+  app.use('/api/v1/chat', chatRoutes);
+
+  // Feed-specific routes
+  app.use(
+    '/api/v1/feed/home',
+    (req, res, next) => {
+      // Route to posts controller for home feed
+      req.url = '/';
+      next();
+    },
+    require('./modules/posts/controller').getHomeFeed
+  );
+
+  app.use(
+    '/api/v1/feed/saved',
+    (req, res, next) => {
+      // Route to posts controller for saved posts
+      req.url = '/';
+      next();
+    },
+    require('./modules/posts/controller').getSavedPosts
+  );
+
   // KYC and admin routes (feature-flagged)
   if (features.kyc) {
     app.use('/api/v1/admin', adminRoutes);
     app.use('/api/v1/webhooks', webhookRoutes);
   }
-  
+
   app.use('/api/v1/audit', auditRoutes);
   app.use('/api/v1/jobs', jobRoutes);
 
@@ -170,9 +216,9 @@ function startServer() {
     });
 
     // Graceful shutdown handling
-    const gracefulShutdown = (signal) => {
+    const gracefulShutdown = signal => {
       logger.info(`Received ${signal}, starting graceful shutdown`);
-      
+
       server.close(() => {
         logger.info('HTTP server closed');
         process.exit(0);
@@ -190,7 +236,7 @@ function startServer() {
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
     // Handle uncaught exceptions
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', error => {
       logger.error('Uncaught Exception', {
         error: error.message,
         stack: error.stack,

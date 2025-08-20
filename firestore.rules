@@ -1,0 +1,240 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isModerator(conversationId) {
+      return exists(/databases/$(database)/documents/conversations/$(conversationId)/participants/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/conversations/$(conversationId)/participants/$(request.auth.uid)).data.role in ['moderator', 'owner'];
+    }
+    
+    function isParticipant(conversationId) {
+      return exists(/databases/$(database)/documents/conversations/$(conversationId)/participants/$(request.auth.uid)) &&
+             !get(/databases/$(database)/documents/conversations/$(conversationId)/participants/$(request.auth.uid)).data.isBanned;
+    }
+    
+    function isBlocked(blockedUserId) {
+      return exists(/databases/$(database)/documents/blocks/$(request.auth.uid + '_' + blockedUserId));
+    }
+    
+    function isConversationLocked(conversationId) {
+      return get(/databases/$(database)/documents/conversations/$(conversationId)).data.isLocked == true;
+    }
+
+    // Communities collection
+    match /communities/{communityId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && 
+        (resource.data.createdBy == request.auth.uid || 
+         request.auth.token.admin == true);
+    }
+
+    // Community members subcollection
+    match /communities/{communityId}/members/{memberId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && memberId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && 
+        (memberId == request.auth.uid || 
+         get(/databases/$(database)/documents/communities/$(communityId)).data.createdBy == request.auth.uid ||
+         request.auth.token.admin == true);
+    }
+
+    // Posts collection
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        (request.resource.data.authorId == request.auth.uid) &&
+        exists(/databases/$(database)/documents/communities/$(request.resource.data.communityId)/members/$(request.auth.uid));
+      allow update: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || 
+         get(/databases/$(database)/documents/communities/$(request.resource.data.communityId)).data.createdBy == request.auth.uid ||
+         request.auth.token.admin == true);
+      allow delete: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || 
+         get(/databases/$(database)/documents/communities/$(request.resource.data.communityId)).data.createdBy == request.auth.uid ||
+         request.auth.token.admin == true);
+    }
+
+    // Post votes subcollection
+    match /posts/{postId}/votes/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && userId == request.auth.uid;
+    }
+
+    // Comments collection
+    match /comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        (request.resource.data.authorId == request.auth.uid) &&
+        exists(/databases/$(database)/documents/posts/$(request.resource.data.postId));
+      allow update: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || 
+         get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.authorId == request.auth.uid ||
+         request.auth.token.admin == true);
+      allow delete: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || 
+         get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.authorId == request.auth.uid ||
+         request.auth.token.admin == true);
+    }
+
+    // Comment votes subcollection
+    match /comments/{commentId}/votes/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && userId == request.auth.uid;
+    }
+
+    // Saves collection
+    match /saves/{saveId} {
+      allow read, write: if isAuthenticated() && 
+        saveId == request.auth.uid + '_' + request.resource.data.postId;
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.reporterId == request.auth.uid || 
+         request.auth.token.admin == true ||
+         request.auth.token.moderator == true);
+      allow create: if isAuthenticated() && 
+        request.resource.data.reporterId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+    }
+
+    // Audit logs collection
+    match /audit_logs/{logId} {
+      allow read: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+      allow create: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && userId == request.auth.uid;
+      allow update: if isAuthenticated() && userId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        (userId == request.auth.uid || request.auth.token.admin == true);
+    }
+
+    // User sessions subcollection
+    match /users/{userId}/sessions/{sessionId} {
+      allow read, write: if isAuthenticated() && userId == request.auth.uid;
+    }
+
+    // User devices subcollection
+    match /users/{userId}/devices/{deviceId} {
+      allow read, write: if isAuthenticated() && userId == request.auth.uid;
+    }
+
+    // Chat Conversations collection
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && isParticipant(conversationId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        (isModerator(conversationId) || 
+         request.auth.token.admin == true);
+      allow delete: if isAuthenticated() && 
+        (isModerator(conversationId) || 
+         request.auth.token.admin == true);
+    }
+
+    // Chat Participants subcollection
+    match /conversations/{conversationId}/participants/{userId} {
+      allow read: if isAuthenticated() && 
+        (userId == request.auth.uid || isParticipant(conversationId));
+      allow create: if isAuthenticated() && 
+        (userId == request.auth.uid || isModerator(conversationId));
+      allow update: if isAuthenticated() && 
+        (userId == request.auth.uid || isModerator(conversationId));
+      allow delete: if isAuthenticated() && 
+        (userId == request.auth.uid || isModerator(conversationId));
+    }
+
+    // Chat Messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && 
+        isParticipant(resource.data.conversationId);
+      allow create: if isAuthenticated() && 
+        (request.resource.data.authorId == request.auth.uid) &&
+        isParticipant(request.resource.data.conversationId) &&
+        !isConversationLocked(request.resource.data.conversationId) &&
+        !isBlocked(request.resource.data.authorId);
+      allow update: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || 
+         isModerator(resource.data.conversationId) ||
+         request.auth.token.admin == true);
+      allow delete: if isAuthenticated() && 
+        (resource.data.authorId == request.auth.uid || 
+         isModerator(resource.data.conversationId) ||
+         request.auth.token.admin == true);
+    }
+
+    // Chat Message Reactions subcollection
+    match /messages/{messageId}/reactions/{userId} {
+      allow read: if isAuthenticated() && 
+        isParticipant(get(/databases/$(database)/documents/messages/$(messageId)).data.conversationId);
+      allow write: if isAuthenticated() && 
+        userId == request.auth.uid &&
+        isParticipant(get(/databases/$(database)/documents/messages/$(messageId)).data.conversationId);
+    }
+
+    // Chat Blocks collection
+    match /blocks/{blockId} {
+      allow read, write: if isAuthenticated() && 
+        blockId == request.auth.uid + '_' + request.resource.data.blockedUserId;
+    }
+
+    // Chat Reports collection
+    match /chat_reports/{reportId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.reporterId == request.auth.uid || 
+         request.auth.token.admin == true ||
+         request.auth.token.moderator == true);
+      allow create: if isAuthenticated() && 
+        request.resource.data.reporterId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+    }
+
+    // Presence collection
+    match /presence/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && userId == request.auth.uid;
+    }
+
+    // Admin collection
+    match /admin/{document=**} {
+      allow read, write: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+    }
+
+    // Webhooks collection
+    match /webhooks/{webhookId} {
+      allow read, write: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.webhook == true);
+    }
+
+    // Jobs collection
+    match /jobs/{jobId} {
+      allow read, write: if isAuthenticated() && 
+        (request.auth.token.admin == true || 
+         request.auth.token.job == true);
+    }
+  }
+}

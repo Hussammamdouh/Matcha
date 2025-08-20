@@ -1,8 +1,12 @@
 const { validationResult } = require('express-validator');
-const { getFirestore, revokeRefreshTokens } = require('../../lib/firebase');
+const { getFirestore, revokeRefreshTokens } = require('../../../lib/firebase');
 const { createRequestLogger } = require('../../lib/logger');
 const { createAuditLog } = require('../audit/service');
-const { generateAvatarUploadUrl, getAvatarPublicUrl, deleteAvatar } = require('../../lib/avatarUpload');
+const {
+  generateAvatarUploadUrl,
+  getAvatarPublicUrl,
+  deleteAvatar,
+} = require('../../lib/avatarUpload');
 
 /**
  * Get current user profile
@@ -72,7 +76,7 @@ async function getProfile(req, res) {
 async function updateProfile(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -182,8 +186,6 @@ async function sendEmailVerification(req, res) {
     },
   });
 }
-
-
 
 /**
  * Logout current user
@@ -430,15 +432,15 @@ async function confirmAvatarUpload(req, res) {
     }
 
     const firestore = getFirestore();
-    
+
     // Get current avatar URL to delete old file
     const userDoc = await firestore.collection('users').doc(uid).get();
     const userData = userDoc.data();
     const oldAvatarUrl = userData.avatarUrl;
-    
+
     // Generate new public URL
     const newAvatarUrl = getAvatarPublicUrl(filePath);
-    
+
     // Update user profile
     await firestore.collection('users').doc(uid).update({
       avatarUrl: newAvatarUrl,

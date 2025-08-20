@@ -8,13 +8,17 @@ const router = express.Router();
 // GET /me/sessions - List user sessions
 // DELETE /me/sessions/:sessionId - Revoke specific session
 
-router.get('/', verifyFirebaseIdToken, asyncHandler(async (req, res) => {
-  res.status(200).json({
-    ok: true,
-    data: { message: 'Session management endpoints coming soon' },
-    error: null,
-    meta: { requestId: req.id },
-  });
-}));
+router.get(
+  '/',
+  verifyFirebaseIdToken,
+  asyncHandler(async (req, res) => {
+    res.status(200).json({
+      ok: true,
+      data: { message: 'Session management endpoints coming soon' },
+      error: null,
+      meta: { requestId: req.id },
+    });
+  })
+);
 
 module.exports = router;

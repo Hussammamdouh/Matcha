@@ -1,4 +1,4 @@
-const { getFirestore } = require('../../lib/firebase');
+const { getFirestore } = require('../../../lib/firebase');
 const { createRequestLogger } = require('../../lib/logger');
 const { createAuditLog } = require('../audit/service');
 const { v4: uuidv4 } = require('uuid');
@@ -15,10 +15,10 @@ async function registerDevice(req, res) {
 
   try {
     const firestore = getFirestore();
-    
+
     // Generate device ID if not provided
     const finalDeviceId = deviceId || uuidv4();
-    
+
     // Check if device already exists for this user
     const existingDevice = await firestore
       .collection('devices')
@@ -140,7 +140,7 @@ async function listDevices(req, res) {
 
   try {
     const firestore = getFirestore();
-    
+
     const devicesSnapshot = await firestore
       .collection('devices')
       .where('userId', '==', uid)
@@ -209,7 +209,7 @@ async function revokeDevice(req, res) {
 
   try {
     const firestore = getFirestore();
-    
+
     // Find the device
     const deviceSnapshot = await firestore
       .collection('devices')
@@ -295,4 +295,5 @@ module.exports = {
   listDevices,
   revokeDevice,
 };
+
 

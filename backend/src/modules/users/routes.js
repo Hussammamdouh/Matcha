@@ -43,7 +43,7 @@ const router = express.Router();
  *         updatedAt:
  *           type: string
  *           format: date-time
- *     
+ *
  *     UpdateProfileRequest:
  *       type: object
  *       properties:
@@ -82,10 +82,7 @@ const router = express.Router();
  *       401:
  *         description: Authentication required
  */
-router.get('/',
-  verifyFirebaseIdToken,
-  asyncHandler(userController.getProfile)
-);
+router.get('/', verifyFirebaseIdToken, asyncHandler(userController.getProfile));
 
 /**
  * @swagger
@@ -109,10 +106,15 @@ router.get('/',
  *       401:
  *         description: Authentication required
  */
-router.patch('/',
+router.patch(
+  '/',
   verifyFirebaseIdToken,
   [
-    body('nickname').optional().isLength({ min: 3, max: 20 }).matches(/^[a-zA-Z0-9_-]+$/).withMessage('Nickname must be 3-20 characters, alphanumeric, underscore, or dash only'),
+    body('nickname')
+      .optional()
+      .isLength({ min: 3, max: 20 })
+      .matches(/^[a-zA-Z0-9_-]+$/)
+      .withMessage('Nickname must be 3-20 characters, alphanumeric, underscore, or dash only'),
     body('avatarUrl').optional().isURL().withMessage('Avatar URL must be a valid URL'),
   ],
   asyncHandler(userController.updateProfile)
@@ -132,14 +134,11 @@ router.patch('/',
  *       401:
  *         description: Authentication required
  */
-router.post('/email/verify/send',
+router.post(
+  '/email/verify/send',
   verifyFirebaseIdToken,
   asyncHandler(userController.sendEmailVerification)
 );
-
-
-
-
 
 /**
  * @swagger
@@ -155,10 +154,7 @@ router.post('/email/verify/send',
  *       401:
  *         description: Authentication required
  */
-router.post('/logout',
-  verifyFirebaseIdToken,
-  asyncHandler(userController.logout)
-);
+router.post('/logout', verifyFirebaseIdToken, asyncHandler(userController.logout));
 
 /**
  * @swagger
@@ -174,10 +170,7 @@ router.post('/logout',
  *       401:
  *         description: Authentication required
  */
-router.post('/logout-all',
-  verifyFirebaseIdToken,
-  asyncHandler(userController.logoutAll)
-);
+router.post('/logout-all', verifyFirebaseIdToken, asyncHandler(userController.logoutAll));
 
 /**
  * @swagger
@@ -193,10 +186,7 @@ router.post('/logout-all',
  *       401:
  *         description: Authentication required
  */
-router.delete('/',
-  verifyFirebaseIdToken,
-  asyncHandler(userController.deleteAccount)
-);
+router.delete('/', verifyFirebaseIdToken, asyncHandler(userController.deleteAccount));
 
 /**
  * @swagger
@@ -230,7 +220,8 @@ router.delete('/',
  *       401:
  *         description: Authentication required
  */
-router.post('/avatar/upload-url',
+router.post(
+  '/avatar/upload-url',
   verifyFirebaseIdToken,
   [
     body('fileName').isString().notEmpty().withMessage('File name is required'),
@@ -267,11 +258,10 @@ router.post('/avatar/upload-url',
  *       401:
  *         description: Authentication required
  */
-router.post('/avatar/confirm',
+router.post(
+  '/avatar/confirm',
   verifyFirebaseIdToken,
-  [
-    body('filePath').isString().notEmpty().withMessage('File path is required'),
-  ],
+  [body('filePath').isString().notEmpty().withMessage('File path is required')],
   asyncHandler(userController.confirmAvatarUpload)
 );
 

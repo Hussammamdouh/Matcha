@@ -1,4 +1,4 @@
-const { getFirestore } = require('../../lib/firebase');
+const { getFirestore } = require('../../../lib/firebase');
 const { createRequestLogger } = require('../../lib/logger');
 
 /**
@@ -9,7 +9,7 @@ const { createRequestLogger } = require('../../lib/logger');
 async function createAuditLog(auditData) {
   try {
     const firestore = getFirestore();
-    
+
     const auditEntry = {
       ...auditData,
       createdAt: new Date(),

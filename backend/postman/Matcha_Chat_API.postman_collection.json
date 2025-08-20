@@ -1,0 +1,898 @@
+{
+  "info": {
+    "name": "Matcha Chat API",
+    "description": "Complete API collection for Matcha Chat functionality",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "matcha-chat-api-123",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "Chat Conversations",
+      "item": [
+        {
+          "name": "Create Direct Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"direct\",\n  \"memberUserId\": \"user456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "Create Group Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"group\",\n  \"title\": \"Test Group\",\n  \"memberUserIds\": [\"user456\", \"user789\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations"]
+            }
+          }
+        },
+        {
+          "name": "List Conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations?pageSize=20&cursor={{nextCursor}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations"],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{nextCursor}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Conversation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Join Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/join",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}", "join"]
+            }
+          }
+        },
+        {
+          "name": "Leave Conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/leave",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}", "leave"]
+            }
+          }
+        },
+        {
+          "name": "Update Conversation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Group Title\",\n  \"icon\": \"https://example.com/new-icon.png\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Toggle Mute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isMuted\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/mute",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}", "mute"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat Messages",
+      "item": [
+        {
+          "name": "Send Text Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"type\": \"text\",\n  \"text\": \"Hello, this is a test message!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Send Media Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"type\": \"image\",\n  \"media\": {\n    \"url\": \"https://example.com/image.jpg\",\n    \"mime\": \"image/jpeg\",\n    \"size\": 1024000,\n    \"width\": 1920,\n    \"height\": 1080\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages"]
+            }
+          }
+        },
+        {
+          "name": "Get Conversation Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages/conversation/{{conversationId}}?pageSize=50&order=desc&cursor={{messageCursor}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages", "conversation", "{{conversationId}}"],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                },
+                {
+                  "key": "order",
+                  "value": "desc"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{messageCursor}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Edit Message",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Updated message text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages", "{{messageId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Message",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages", "{{messageId}}"]
+            }
+          }
+        },
+        {
+          "name": "Add Reaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"👍\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages/{{messageId}}/reactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages", "{{messageId}}", "reactions"]
+            }
+          }
+        },
+        {
+          "name": "Remove Reaction",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/messages/{{messageId}}/reactions/👍",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "messages", "{{messageId}}", "reactions", "👍"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat Presence & Typing",
+      "item": [
+        {
+          "name": "Update Presence",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"online\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/presence/heartbeat",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "presence", "heartbeat"]
+            }
+          }
+        },
+        {
+          "name": "Set Typing Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isTyping\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/typing",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}", "typing"]
+            }
+          }
+        },
+        {
+          "name": "Mark as Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"at\": \"{{$timestamp}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversationId}}", "read"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat Blocks",
+      "item": [
+        {
+          "name": "Block User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blockedUserId\": \"user456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/blocks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "blocks"]
+            }
+          }
+        },
+        {
+          "name": "Unblock User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/blocks/user456",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "blocks", "user456"]
+            }
+          }
+        },
+        {
+          "name": "Get Blocked Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/blocks?pageSize=20&cursor={{blockCursor}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "blocks"],
+              "query": [
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{blockCursor}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat Reports",
+      "item": [
+        {
+          "name": "Create Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"message\",\n  \"targetId\": \"{{messageId}}\",\n  \"conversationId\": \"{{conversationId}}\",\n  \"reasonCode\": \"spam\",\n  \"note\": \"This message contains spam content\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/reports",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "reports"]
+            }
+          }
+        },
+        {
+          "name": "Get Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/reports?status=new&type=message&pageSize=20&cursor={{reportCursor}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "reports"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "new"
+                },
+                {
+                  "key": "type",
+                  "value": "message"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{reportCursor}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "reports", "{{reportId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Report Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"resolutionNote\": \"Report resolved - user warned\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "chat", "reports", "{{reportId}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Storage",
+      "item": [
+        {
+          "name": "Generate Chat Media Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"conversationId\": \"{{conversationId}}\",\n  \"type\": \"image\",\n  \"mime\": \"image/jpeg\",\n  \"size\": 1024000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/storage/chat/sign",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "storage", "chat", "sign"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Chat Reports (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/chat/reports?status=new&type=message&pageSize=20&cursor={{adminReportCursor}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "chat", "reports"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "new"
+                },
+                {
+                  "key": "type",
+                  "value": "message"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{adminReportCursor}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resolve Chat Report (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"resolutionNote\": \"Report resolved by admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/chat/reports/{{reportId}}/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "chat", "reports", "{{reportId}}", "resolve"]
+            }
+          }
+        },
+        {
+          "name": "Remove Chat Message (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/chat/messages/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "chat", "messages", "{{messageId}}"]
+            }
+          }
+        },
+        {
+          "name": "Ban User from Conversation (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Violation of community guidelines\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/chat/conversations/{{conversationId}}/ban/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "chat", "conversations", "{{conversationId}}", "ban", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Lock Conversation (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isLocked\": true,\n  \"reason\": \"Under investigation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/chat/conversations/{{conversationId}}/lock",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "chat", "conversations", "{{conversationId}}", "lock"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "your-firebase-id-token-here",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "your-admin-firebase-id-token-here",
+      "type": "string"
+    },
+    {
+      "key": "conversationId",
+      "value": "conversation-id-from-create-response",
+      "type": "string"
+    },
+    {
+      "key": "messageId",
+      "value": "message-id-from-send-response",
+      "type": "string"
+    },
+    {
+      "key": "reportId",
+      "value": "report-id-from-create-response",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "user-id-to-ban",
+      "type": "string"
+    },
+    {
+      "key": "nextCursor",
+      "value": "cursor-from-list-response",
+      "type": "string"
+    },
+    {
+      "key": "messageCursor",
+      "value": "cursor-from-messages-response",
+      "type": "string"
+    },
+    {
+      "key": "blockCursor",
+      "value": "cursor-from-blocks-response",
+      "type": "string"
+    },
+    {
+      "key": "reportCursor",
+      "value": "cursor-from-reports-response",
+      "type": "string"
+    },
+    {
+      "key": "adminReportCursor",
+      "value": "cursor-from-admin-reports-response",
+      "type": "string"
+    }
+  ]
+}

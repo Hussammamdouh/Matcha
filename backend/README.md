@@ -1,658 +1,350 @@
 # Matcha Backend
 
-A secure, scalable backend for Matcha - a women-only anonymous social application built with Node.js, Express, and Firebase.
+A production-ready, hardened backend for the Matcha women-only anonymous social application. Built with Node.js, Express, Firebase Admin, and designed for scalability without composite indexes.
 
 ## 🚀 Features
 
-- **Authentication & Authorization**
-  - **Firebase-only authentication** - Clients authenticate directly with Firebase SDK
-  - **Secure ID token verification** - Backend verifies Firebase ID tokens
-  - **Email verification & password reset** - Uses Firebase Admin for secure links
-  - **Google/Apple OAuth** - Social authentication support
-  - **Multi-factor authentication (MFA)** - TOTP only (SMS disabled)
-  - **Role-based access control** - Admin, moderator, user roles
-  - **Session and device management** - Track and manage user sessions
-
-- **Security & Privacy**
-  - **Rate limiting** - Stricter limits on auth endpoints
-  - **Comprehensive audit logging** - All sensitive operations tracked
-  - **Helmet security headers** - Protection against common vulnerabilities
-  - **CORS protection** - Origin allowlisting
-  - **Firestore security rules** - User data isolation
-  - **Storage security rules** - Avatar upload restrictions
-
-## 🔧 Feature Flags
-
-The backend uses feature flags to control optional functionality:
-
-```env
-# Feature Flags
-ENABLE_KYC=false              # KYC verification system
-ENABLE_PHONE_AUTH=false       # Phone OTP + SMS MFA
-ENABLE_RECAPTCHA=false        # reCAPTCHA Enterprise
-```
-
-**Current Status:**
-- ✅ **Email/Password Authentication** - Always enabled
-- ✅ **Google/Apple OAuth** - Always enabled  
-- ✅ **TOTP MFA** - Always enabled
-- ❌ **SMS/Phone OTP** - Disabled by default
-- ❌ **KYC Verification** - Disabled by default
-- ❌ **reCAPTCHA** - Disabled by default
-
-To enable any feature, set the corresponding environment variable to `true`.
-
-- **Scalability**
-  - Cloud Run deployment with auto-scaling
-  - Firestore for data storage
-  - Cloud Tasks for async operations
-  - Cloud Scheduler for cron jobs
+- **Authentication**: Firebase Auth with ID token verification
+- **Database**: Firestore with optimized single-field indexes
+- **Storage**: Firebase Storage with secure access rules
+- **Real-time**: WebSocket support for chat and presence
+- **Moderation**: Comprehensive RBAC and content moderation
+- **Security**: Rate limiting, input validation, and sanitization
+- **Observability**: Structured logging, metrics, and health checks
+- **Scalability**: Transaction-based counters and rankings
 
 ## 🏗️ Architecture
 
-```
-src/
-├── config/          # Configuration management (including feature flags)
-├── lib/             # Core libraries (Firebase, etc.)
-├── middlewares/     # Express middlewares
-├── modules/         # Feature modules
-│   ├── auth/        # Authentication endpoints (email/password, OAuth)
-│   ├── users/       # User profile management
-│   ├── devices/     # Device management
-│   ├── sessions/    # Session management
-│   ├── admin/       # Administrative functions (feature-flagged)
-│   └── audit/       # Audit logging
-├── routes/          # Health check routes
-├── webhooks/        # External service webhooks (feature-flagged)
-├── jobs/            # Cloud Tasks handlers
-└── docs/            # API documentation
-```
+### Core Modules
+- **Auth**: User authentication and session management
+- **Users**: User profiles and management
+- **Communities**: Community creation and moderation
+- **Posts**: Content creation with voting and comments
+- **Chat**: Direct and group messaging
+- **Men-Review**: Photo review system with safety checks
+- **Admin**: Moderation tools and system administration
+- **Storage**: File upload and management
 
-## 🛠️ Tech Stack
+### Security Features
+- **RBAC**: Role-based access control (User, Moderator, Admin, Super Admin)
+- **Rate Limiting**: Per-route and daily quota limits
+- **Input Validation**: Express-validator with sanitization
+- **Idempotency**: Safe retry for destructive admin actions
+- **Server-Only Fields**: Protected counters and moderation flags
 
-- **Runtime**: Node.js 20+
-- **Framework**: Express.js
-- **Authentication**: Firebase Admin SDK
-- **Database**: Firestore (Native mode)
-- **Storage**: Firebase Storage (GCS)
-- **Deployment**: Google Cloud Run
-- **Security**: Cloud KMS, reCAPTCHA Enterprise
-- **Monitoring**: Cloud Logging, Cloud Trace
+## 🚦 Feature Flags
 
-## 📋 Prerequisites
+| Feature | Development | Staging | Production | Description |
+|---------|-------------|---------|------------|-------------|
+| `kyc` | ❌ | ❌ | ❌ | KYC verification system |
+| `sms` | ❌ | ❌ | ❌ | SMS verification |
+| `recaptcha` | ❌ | ❌ | ❌ | reCAPTCHA integration |
+| `shadowban` | ✅ | ✅ | ✅ | Shadowban filtering |
+| `advanced_moderation` | ✅ | ✅ | ✅ | Enhanced moderation tools |
+| `analytics` | ✅ | ✅ | ✅ | User analytics and metrics |
 
-- Node.js 20+ installed
-- Google Cloud Platform account
-- Firebase project created
-- Service account key with appropriate permissions
+## 📊 Rate Limits
 
-## 🔐 Authentication Flow
+### General Limits
+- **General**: 1000 requests per 15 minutes
+- **Authentication**: 5 attempts per 15 minutes
 
-**Important: This backend does NOT handle raw passwords. All authentication is done via Firebase.**
+### Content Creation
+- **Posts**: 10 per hour, 50 per day
+- **Comments**: 20 per 15 minutes, 200 per day
+- **Votes**: 50 per 5 minutes, 500 per day
+- **Chat Messages**: 30 per minute, 1000 per day
+- **Men Reviews**: 5 per hour, 20 per day
 
-### Client Authentication Flow:
-1. **Client authenticates** with Firebase SDK (email/password, Google, Apple)
-2. **Client gets ID token** from Firebase Auth
-3. **Client sends ID token** in `Authorization: Bearer <idToken>` header
-4. **Backend verifies token** using Firebase Admin SDK
-5. **Backend grants access** to protected endpoints
+### Admin Actions
+- **Moderation**: 10 actions per minute
+- **Reports**: 3 per hour
+- **User Management**: 10 actions per minute
 
-### Backend Authentication:
-- **No password storage** - Firebase handles all password operations
-- **ID token verification** - Every request validates Firebase ID token
-- **Email verification** - Uses Firebase Admin `generateEmailVerificationLink`
-- **Password reset** - Uses Firebase Admin `generatePasswordResetLink`
-- **Secure by design** - No sensitive data sent to backend
+## 🛠️ Quick Start
 
-## 🚀 Quick Start
-
-### 1. Clone and Install
-
-```bash
-git clone <repository-url>
-cd backend
-npm install
-```
-
-### 2. Environment Setup
-
-Copy the environment template and configure your values:
-
-```bash
-cp env.example .env
-```
-
-Edit `.env` with your configuration:
-
-```env
-NODE_ENV=development
-PORT=8080
-FIREBASE_PROJECT_ID=your-project-id
-GOOGLE_APPLICATION_CREDENTIALS=./service-account-key.json
-```
-
-### 3. Firebase Setup
-
-1. Download your Firebase service account key
-2. Place it in the project root as `service-account-key.json`
-3. Enable Firestore and Storage in your Firebase project
-
-### 4. Start Development Server
-
-```bash
-npm run dev
-```
-
-The server will start at `http://localhost:8080`
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment (development/production) | `development` |
-| `PORT` | Server port | `8080` |
-| `FIREBASE_PROJECT_ID` | Firebase project ID | Required |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Service account key path | Required |
-| `ALLOW_ORIGINS` | CORS allowed origins | `http://localhost:3000` |
-| `RECAPTCHA_ENTERPRISE_API_KEY` | reCAPTCHA API key | Optional |
-| `KMS_KEY_NAME` | Cloud KMS key for encryption | Optional |
-
-### Email Configuration
-
-We support SMTP via Nodemailer. Configure one of the following providers via environment variables.
-
-#### SMTP (recommended for quick start)
-
-Set `MAIL_PROVIDER=smtp` and the following:
-
-```
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-email@domain.com
-SMTP_PASS=your-app-password
-SMTP_FROM=noreply@yourdomain.com
-```
-
-Gmail users: Enable 2FA and create an App Password for SMTP, or use a dedicated provider (e.g., Mailgun SMTP, Sendinblue).
-
-#### SendGrid (not yet implemented in code)
-
-Set `MAIL_PROVIDER=sendgrid` and:
-
-```
-SENDGRID_API_KEY=your_sendgrid_api_key
-SENDGRID_FROM_EMAIL=noreply@yourdomain.com
-```
-
-Note: The current implementation sends emails only when `MAIL_PROVIDER=smtp`. Other providers may be added later.
-
-### Firebase Configuration
-
-1. **Enable Services**:
-   - Authentication (Email/Password, Phone, Google, Apple)
-   - Firestore Database
-   - Storage
-   - Functions (optional)
-
-2. **Security Rules**: Deploy the provided `firestore.rules`
-
-3. **Indexes**: Create composite indexes for:
-   - `users`: `nickname`, `status`, `genderVerificationStatus`
-   - `kyc_submissions`: `status`, `createdAt`
-   - `audit_logs`: `createdAt`, `actorUserId+createdAt`
-
-## 📚 API Documentation
-
-### Swagger UI
-
-Access the interactive API documentation at `/docs` when running in development mode.
-
-### Authentication
-
-All protected endpoints require a Firebase ID token in the Authorization header:
-
-```
-Authorization: Bearer <firebase-id-token>
-```
-
-### Response Format
-
-All API responses follow a consistent format:
-
-```json
-{
-  "ok": true,
-  "data": { ... },
-  "error": null,
-  "meta": {
-    "requestId": "uuid",
-    "timestamp": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
-### Error Handling
-
-Errors follow the same format with appropriate HTTP status codes:
-
-```json
-{
-  "ok": false,
-  "data": null,
-  "error": {
-    "code": "AUTH_INVALID_TOKEN",
-    "message": "Invalid or expired token"
-  },
-  "meta": { ... }
-}
-```
-
-## 🔐 Security Features
-
-### Rate Limiting
-
-- **General**: 100 requests per 15 minutes per IP
-- **Authentication**: 5 attempts per 15 minutes per IP
-- **KYC**: 3 submissions per day per IP
-- **Phone OTP**: 5 requests per 15 minutes per phone
-
-### Data Protection
-
-- PII encryption via Cloud KMS
-- Secure file uploads with signed URLs
-- Audit logging for all sensitive operations
-- Input validation and sanitization
-
-### Access Control
-
-- Role-based permissions (admin, moderator, user)
-- KYC verification status enforcement
-- Device-based session management
-- Secure token handling
-
-## 🚀 Deployment
+### Prerequisites
+- Node.js 20+
+- Firebase project
+- Redis (optional, for distributed rate limiting)
 
 ### Local Development
 
-```bash
-# Start development server
-npm run dev
-
-# Run Firebase emulators for local development
-npm run emulators
-
-# In another terminal, start the backend
-npm run dev
-```
-
-### Firebase Emulators
-
-For local development without real Firebase services:
-
-```bash
-# Install Firebase CLI if not already installed
-npm install -g firebase-tools
-
-# Login to Firebase
-firebase login
-
-# Start emulators
-npm run emulators
-
-# Deploy security rules to emulators
-npm run deploy:rules
-```
-
-### Environment Setup
-
-```bash
-# Copy environment template
-cp env.example .env
-
-# Configure for local development
-NODE_ENV=development
-FIREBASE_PROJECT_ID=matcha-dev
-GOOGLE_APPLICATION_CREDENTIALS=./service-account-key.json
-ALLOW_ORIGINS=http://localhost:3000
-FRONTEND_URL=http://localhost:3000
-```
-
-### Production Build
-
-```bash
-npm run build
-npm start
-```
-
-### Docker
-
-```bash
-docker build -t matcha-backend .
-docker run -p 8080:8080 matcha-backend
-```
-
-### Google Cloud Run
-
-1. **Build and Push**:
+1. **Clone and install dependencies**
    ```bash
-   gcloud builds submit --tag gcr.io/PROJECT_ID/matcha-backend
+   git clone <repository>
+   cd backend
+   npm install
    ```
 
-2. **Deploy**:
+2. **Environment setup**
    ```bash
-   gcloud run deploy matcha-backend \
-     --image gcr.io/PROJECT_ID/matcha-backend \
-     --platform managed \
-     --region us-central1 \
-     --allow-unauthenticated
+   cp env.example .env
+   # Edit .env with your Firebase credentials
    ```
 
-3. **Update Configuration**:
-   - Replace `PROJECT_ID` in `cloudrun.yaml`
-   - Configure environment variables in Secret Manager
-   - Set up Cloud Armor rules for additional protection
+3. **Firebase emulators**
+   ```bash
+   npm run emulators
+   ```
 
-### Staging Deployment
+4. **Start development server**
+   ```bash
+   npm run dev
+   ```
 
-For staging environment:
+5. **Run tests**
+   ```bash
+   npm test
+   npm run test:coverage
+   ```
 
+### Firebase Emulator Setup
+
+1. **Install Firebase CLI**
+   ```bash
+   npm install -g firebase-tools
+   ```
+
+2. **Login to Firebase**
+   ```bash
+   firebase login
+   ```
+
+3. **Start emulators**
+   ```bash
+   firebase emulators:start --only auth,firestore,storage
+   ```
+
+4. **Deploy rules to emulator**
+   ```bash
+   firebase deploy --only firestore:rules,storage --project <project-id>
+   ```
+
+## 🔒 Security Rules Deployment
+
+### Firestore Rules
 ```bash
-# Set staging environment
-export NODE_ENV=staging
-export FIREBASE_PROJECT_ID=matcha-staging
+# Deploy to production
+firebase deploy --only firestore:rules --project <project-id>
 
 # Deploy to staging
-gcloud run deploy matcha-backend-staging \
-  --image gcr.io/PROJECT_ID/matcha-backend \
+firebase deploy --only firestore:rules --project <staging-project-id>
+```
+
+### Storage Rules
+```bash
+# Deploy to production
+firebase deploy --only storage --project <project-id>
+
+# Deploy to staging
+firebase deploy --only storage --project <staging-project-id>
+```
+
+### Rules Validation
+```bash
+# Validate rules locally
+firebase emulators:start --only firestore,storage
+firebase deploy --only firestore:rules,storage --project <project-id>
+```
+
+## 🚀 Production Deployment
+
+### Environment Variables
+```bash
+# Required
+NODE_ENV=production
+PORT=8080
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_PRIVATE_KEY=your-private-key
+FIREBASE_CLIENT_EMAIL=your-client-email
+FIREBASE_STORAGE_BUCKET=your-bucket
+
+# Optional
+REDIS_URL=redis://localhost:6379
+LOG_LEVEL=info
+CORS_ORIGINS=https://yourdomain.com
+```
+
+### Docker Deployment
+```bash
+# Build image
+npm run docker:build
+
+# Run container
+npm run docker:run
+
+# Deploy to Cloud Run
+gcloud run deploy matcha-backend \
+  --image gcr.io/your-project/matcha-backend \
   --platform managed \
   --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars NODE_ENV=staging
-
-# Deploy security rules
-npm run deploy:rules
-
-# Seed demo data
-SEED_ALLOW=true npm run seed
+  --allow-unauthenticated
 ```
 
-### Production Security
-
-- **Use Secret Manager** - Never commit `.env` files
-- **Firebase security rules** - Deploy `firestore.rules` and `storage.rules`
-- **CORS restrictions** - Only allow production domains
-- **Rate limiting** - Stricter limits in production
-- **Audit logging** - Monitor all sensitive operations
-
-## 🚀 **Fly.io Deployment**
-
-### **Prerequisites**
-
-1. **Install flyctl**:
-   ```bash
-   curl -L https://fly.io/install.sh | sh
-   ```
-
-2. **Login to Fly.io**:
-   ```bash
-   flyctl auth login
-   ```
-
-3. **Set up Firebase credentials**:
-   - Download service account JSON from Firebase Console
-   - Base64 encode it: `base64 -i service-account.json`
-
-### **Quick Deployment**
-
-#### **Staging Environment**:
+### Fly.io Deployment
 ```bash
-# Using PowerShell (Windows)
-.\scripts\deploy-fly.ps1 staging
+# Deploy
+npm run fly:deploy
 
-# Using Bash (Linux/Mac)
-./scripts/deploy-fly.sh staging
-```
+# Set secrets
+npm run fly:secrets
 
-#### **Production Environment**:
-```bash
-# Using PowerShell (Windows)
-.\scripts\deploy-fly.ps1 production
-
-# Using Bash (Linux/Mac)
-./scripts/deploy-fly.sh production
-```
-
-### **Manual Deployment**
-
-1. **Create app**:
-   ```bash
-   flyctl apps create matcha-backend --org personal
-   ```
-
-2. **Set secrets**:
-   ```bash
-   flyctl secrets set --app matcha-backend FIREBASE_PROJECT_ID=your-project-id
-   flyctl secrets set --app matcha-backend GOOGLE_APPLICATION_CREDENTIALS_JSON="$(base64 -i service-account.json)"
-   flyctl secrets set --app matcha-backend ALLOW_ORIGINS=https://your-domain.com
-   flyctl secrets set --app matcha-backend FRONTEND_URL=https://your-domain.com
-   ```
-
-3. **Deploy**:
-   ```bash
-   flyctl deploy --app matcha-backend
-   ```
-
-### **Deployment Scripts**
-
-- **`scripts/deploy-fly.sh`** - Bash script for Linux/Mac
-- **`scripts/deploy-fly.ps1`** - PowerShell script for Windows
-- **`fly.toml`** - Fly.io configuration
-- **`Dockerfile`** - Production Docker image
-- **`.dockerignore`** - Docker build exclusions
-
-### **Environment Variables**
-
-Create `.env.production` or `.env.staging` with your values:
-```bash
-NODE_ENV=production
-FIREBASE_PROJECT_ID=your-project-id
-ALLOW_ORIGINS=https://your-domain.com
-FRONTEND_URL=https://your-domain.com
-# ... other variables
-```
-
-### **Monitoring & Scaling**
-
-```bash
 # View logs
-flyctl logs --app matcha-backend
-
-# Check status
-flyctl status --app matcha-backend
-
-# Scale resources
-flyctl scale --app matcha-backend --memory 1024 --cpu 2
-
-# View metrics
-flyctl dashboard --app matcha-backend
+npm run fly:logs
 ```
+
+## 📈 Monitoring & Health Checks
+
+### Health Endpoints
+- **`/healthz`**: Basic server health (always 200)
+- **`/readyz`**: Service readiness (checks dependencies)
+- **`/metrics`**: Prometheus metrics
+- **`/healthz/detailed`**: Comprehensive system status
+
+### Logging
+- **Structured logging** with Pino
+- **Sensitive data redaction** (tokens, IPs, emails)
+- **Request correlation** with unique IDs
+- **Performance metrics** and error tracking
+
+### Metrics
+- **Application metrics**: Uptime, memory usage
+- **Business metrics**: User activity, content creation
+- **Performance metrics**: Response times, error rates
+- **Security metrics**: Rate limit violations, auth failures
 
 ## 🧪 Testing
 
-### Run Tests
-
-```bash
-npm test
+### Test Structure
+```
+tests/
+├── unit/           # Unit tests
+├── integration/    # Integration tests
+├── chat/          # Chat-specific tests
+└── fixtures/      # Test data and mocks
 ```
 
-### Test Coverage
-
+### Running Tests
 ```bash
-npm run test:coverage
-```
-
-### Test Environment
-
-Tests use mocked Firebase services and don't require real credentials:
-
-```bash
-# Tests run with mocked Firebase Admin SDK
+# All tests
 npm test
 
-# Watch mode for development
-npm run test:watch
+# Specific test suites
+npm run test:chat
+npm run test:unit
+npm run test:integration
 
 # Coverage report
 npm run test:coverage
+
+# Watch mode
+npm run test:watch
 ```
 
-### Test Structure
+### Test Database
+- **Firebase Emulator**: Local development and testing
+- **Test Data**: Seeded with realistic scenarios
+- **Cleanup**: Automatic cleanup between test runs
 
-- **Unit tests** - Test individual functions with mocked dependencies
-- **Integration tests** - Test API endpoints with mocked Firebase
-- **Mocked services** - Firebase Admin, email, audit logging
-- **Test utilities** - Global test helpers and mock objects
+## 🔧 Configuration
 
-## 🌱 Data Seeding
-
-### Create Demo Users
-
-```bash
-# Enable seeding (safety check)
-export SEED_ALLOW=true
-
-# Run seeding script
-npm run seed
-
-# Or directly
-SEED_ALLOW=true node scripts/seed.js
+### Environment Configuration
+```javascript
+// config/index.js
+module.exports = {
+  env: process.env.NODE_ENV || 'development',
+  port: process.env.PORT || 8080,
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET
+  },
+  redis: {
+    enabled: process.env.REDIS_URL ? true : false,
+    url: process.env.REDIS_URL
+  },
+  features: {
+    kyc: process.env.FEATURE_KYC === 'true',
+    sms: process.env.FEATURE_SMS === 'true',
+    recaptcha: process.env.FEATURE_RECAPTCHA === 'true'
+  }
+};
 ```
 
-### Seeding Features
+### Feature Flags
+```javascript
+// Enable/disable features via environment
+FEATURE_KYC=false
+FEATURE_SMS=false
+FEATURE_RECAPTCHA=false
+FEATURE_SHADOWBAN=true
+FEATURE_ADVANCED_MODERATION=true
+```
 
-- **Demo users** - 5 pre-configured test accounts
-- **Idempotent** - Safe to run multiple times
-- **Auto-verification** - Email and gender verification auto-approved
-- **Demo devices** - Each user gets a demo device
-- **Staging ready** - Perfect for testing and demos
+## 📚 API Documentation
 
-## 📊 Monitoring & Logging
+### OpenAPI/Swagger
+- **Development**: Available at `/docs`
+- **Production**: Protected with basic auth
+- **Export**: Postman collection available
 
-### Health Checks
+### API Versioning
+- **Current**: `/api/v1/`
+- **Deprecation**: 6-month notice for breaking changes
+- **Migration**: Backward compatibility maintained
 
-- `/healthz` - Basic health status
-- `/readyz` - Service readiness
-- `/healthz/live` - Liveness probe
-- `/healthz/detailed` - Comprehensive health info
-
-### Logging
-
-- Structured JSON logging
-- Request ID correlation
-- PII redaction
-- Cloud Logging integration
-
-### Metrics
-
-- Request duration tracking
-- Error rate monitoring
-- Custom business metrics
-- Cloud Monitoring integration
-
-## 🔄 CI/CD
-
-### GitHub Actions
-
-The repository includes GitHub Actions workflows for:
-
-- Code quality checks (ESLint, Prettier)
-- Automated testing
-- Security scanning
-- Docker image building
-- Cloud Run deployment
-
-### Pre-commit Hooks
-
-- Husky for Git hooks
-- lint-staged for staged file processing
-- Automated code formatting
-
-## 🚨 Troubleshooting
+## 🚨 Incident Response
 
 ### Common Issues
+1. **Rate Limit Exceeded**: Check user activity patterns
+2. **Firestore Quota**: Monitor read/write operations
+3. **Storage Quota**: Review file upload patterns
+4. **Memory Leaks**: Check for unclosed connections
 
-1. **Firebase Connection Failed**
-   - Verify service account key permissions
-   - Check Firebase project configuration
-   - Ensure services are enabled
+### Emergency Procedures
+1. **Service Degradation**: Enable rate limiting
+2. **Security Breach**: Rotate API keys, audit logs
+3. **Data Loss**: Restore from backups
+4. **Performance Issues**: Scale horizontally
 
-2. **Rate Limiting**
-   - Check client request frequency
-   - Verify IP address detection
-   - Review rate limit configuration
-
-3. **Authentication Errors**
-   - Verify Firebase ID token
-   - Check custom claims
-   - Review user status
-
-### Debug Mode
-
-Enable debug logging:
-
-```env
-LOG_LEVEL=debug
-```
-
-### Health Check Failures
-
-Check service dependencies:
-- Firebase connectivity
-- Firestore access
-- Environment configuration
+### Contact Information
+- **On-call**: [Team contact info]
+- **Escalation**: [Manager contact info]
+- **Documentation**: [Runbook links]
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+### Development Workflow
+1. **Feature branch**: `feature/description`
+2. **Bug fix**: `fix/description`
+3. **Hotfix**: `hotfix/description`
 
-### Code Style
+### Code Standards
+- **ESLint**: Code quality and style
+- **Prettier**: Code formatting
+- **Husky**: Pre-commit hooks
+- **Tests**: Required for all changes
 
-- Follow ESLint configuration
-- Use Prettier for formatting
-- Write comprehensive JSDoc comments
-- Follow established patterns
+### Review Process
+1. **Self-review**: Test locally
+2. **Peer review**: Code review required
+3. **Integration tests**: Must pass
+4. **Deployment**: Staging first, then production
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## 🙏 Acknowledgments
 
-For support and questions:
-
-- Create an issue in the repository
-- Contact the development team
-- Check the API documentation at `/docs`
-
-## 🔮 Roadmap
-
-- [ ] KYC provider integrations (Persona, Onfido, Veriff)
-- [ ] Advanced analytics and reporting
-- [ ] Real-time notifications
-- [ ] Content moderation tools
-- [ ] Advanced security features
-- [ ] Performance optimizations
-- [ ] Multi-region deployment
-- [ ] Advanced monitoring and alerting
+- Firebase team for excellent tooling
+- Express.js community for the robust framework
+- Open source contributors for security libraries
 
 ---
 
-**Note**: This is a production-ready backend with security and scalability in mind. Always review security configurations before deployment and ensure compliance with relevant regulations.
+**Last Updated**: December 2024  
+**Version**: 1.0.0  
+**Maintainer**: Matcha Backend Team

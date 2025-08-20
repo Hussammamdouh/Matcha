@@ -35,7 +35,7 @@ const router = express.Router();
  *         osVersion:
  *           type: string
  *           description: Operating system version
- *     
+ *
  *     Device:
  *       type: object
  *       properties:
@@ -83,10 +83,13 @@ const router = express.Router();
  *       401:
  *         description: Authentication required
  */
-router.post('/register',
+router.post(
+  '/register',
   verifyFirebaseIdToken,
   [
-    body('platform').isIn(['ios', 'android', 'web']).withMessage('Platform must be ios, android, or web'),
+    body('platform')
+      .isIn(['ios', 'android', 'web'])
+      .withMessage('Platform must be ios, android, or web'),
     body('pushToken').isString().notEmpty().withMessage('Push token is required'),
     body('deviceId').optional().isString(),
     body('deviceName').optional().isString(),
@@ -122,10 +125,7 @@ router.post('/register',
  *       401:
  *         description: Authentication required
  */
-router.get('/',
-  verifyFirebaseIdToken,
-  asyncHandler(deviceController.listDevices)
-);
+router.get('/', verifyFirebaseIdToken, asyncHandler(deviceController.listDevices));
 
 /**
  * @swagger
@@ -150,9 +150,6 @@ router.get('/',
  *       404:
  *         description: Device not found
  */
-router.delete('/:deviceId',
-  verifyFirebaseIdToken,
-  asyncHandler(deviceController.revokeDevice)
-);
+router.delete('/:deviceId', verifyFirebaseIdToken, asyncHandler(deviceController.revokeDevice));
 
 module.exports = router;

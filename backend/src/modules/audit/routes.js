@@ -7,8 +7,9 @@ const router = express.Router();
 // TODO: Implement audit log endpoints
 // GET /audit - View audit logs (admin only)
 
-router.get('/', 
-  authenticateToken, 
+router.get(
+  '/',
+  authenticateToken,
   asyncHandler(async (req, res) => {
     res.status(200).json({
       ok: true,

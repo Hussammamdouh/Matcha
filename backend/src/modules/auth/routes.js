@@ -1,7 +1,11 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { authenticateToken } = require('../../middlewares/auth');
-const { authRateLimiter, passwordResetRateLimiter, emailVerificationRateLimiter } = require('../../middlewares/rateLimit');
+const {
+  authRateLimiter,
+  passwordResetLimiter,
+  emailVerificationLimiter,
+} = require('../../middlewares/rateLimit');
 const { asyncHandler } = require('../../middlewares/error');
 const authController = require('./controller');
 const { loginWithEmailPassword } = require('./service');
@@ -110,21 +114,19 @@ const router = express.Router();
  *       409:
  *         description: Email or nickname already exists
  */
-router.post('/register-email',
+router.post(
+  '/register-email',
   authRateLimiter,
   [
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    body('nickname').isLength({ min: 3, max: 20 }).matches(/^[a-zA-Z0-9_-]+$/).withMessage('Nickname must be 3-20 characters, alphanumeric, underscore, or dash only'),
+    body('nickname')
+      .isLength({ min: 3, max: 20 })
+      .matches(/^[a-zA-Z0-9_-]+$/)
+      .withMessage('Nickname must be 3-20 characters, alphanumeric, underscore, or dash only'),
   ],
   asyncHandler(authController.registerWithEmail)
 );
-
-
-
-
-
-
 
 /**
  * @swagger
@@ -150,11 +152,10 @@ router.post('/register-email',
  *       401:
  *         description: Invalid Google ID token
  */
-router.post('/oauth/google',
+router.post(
+  '/oauth/google',
   authRateLimiter,
-  [
-    body('idToken').isString().notEmpty(),
-  ],
+  [body('idToken').isString().notEmpty()],
   asyncHandler(authController.authenticateWithGoogle)
 );
 
@@ -182,11 +183,10 @@ router.post('/oauth/google',
  *       401:
  *         description: Invalid Apple ID token
  */
-router.post('/oauth/apple',
+router.post(
+  '/oauth/apple',
   authRateLimiter,
-  [
-    body('idToken').isString().notEmpty(),
-  ],
+  [body('idToken').isString().notEmpty()],
   asyncHandler(authController.authenticateWithApple)
 );
 
@@ -208,11 +208,10 @@ router.post('/oauth/apple',
  *       400:
  *         description: Invalid email
  */
-router.post('/password/forgot',
-  passwordResetRateLimiter,
-  [
-    body('email').isEmail().normalizeEmail(),
-  ],
+router.post(
+  '/password/forgot',
+  passwordResetLimiter,
+  [body('email').isEmail().normalizeEmail()],
   asyncHandler(authController.forgotPassword)
 );
 
@@ -243,20 +242,16 @@ router.post('/password/forgot',
  *       400:
  *         description: Invalid credentials
  */
-router.post('/login',
+router.post(
+  '/login',
   authRateLimiter,
-  [
-    body('email').isEmail().normalizeEmail(),
-    body('password').isString().isLength({ min: 8 }),
-  ],
+  [body('email').isEmail().normalizeEmail(), body('password').isString().isLength({ min: 8 })],
   asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     const result = await loginWithEmailPassword(email, password);
     res.status(200).json({ ok: true, data: result, error: null, meta: { requestId: req.id } });
   })
 );
-
-
 
 /**
  * @swagger
@@ -278,11 +273,10 @@ router.post('/login',
  *       401:
  *         description: Authentication required
  */
-router.post('/mfa/setup',
+router.post(
+  '/mfa/setup',
   authenticateToken,
-  [
-    body('type').isIn(['totp']),
-  ],
+  [body('type').isIn(['totp'])],
   asyncHandler(authController.setupMfa)
 );
 
@@ -308,12 +302,10 @@ router.post('/mfa/setup',
  *       401:
  *         description: Authentication required
  */
-router.post('/mfa/verify',
+router.post(
+  '/mfa/verify',
   authenticateToken,
-  [
-    body('type').isIn(['totp']),
-    body('code').isString().notEmpty(),
-  ],
+  [body('type').isIn(['totp']), body('code').isString().notEmpty()],
   asyncHandler(authController.verifyMfa)
 );
 
@@ -331,11 +323,6 @@ router.post('/mfa/verify',
  *       401:
  *         description: Authentication required
  */
-router.delete('/mfa/disable',
-  authenticateToken,
-  asyncHandler(authController.disableMfa)
-);
-
-
+router.delete('/mfa/disable', authenticateToken, asyncHandler(authController.disableMfa));
 
 module.exports = router;

@@ -51,12 +51,8 @@ const ErrorCodes = {
   DUPLICATE_EMAIL: { statusCode: 409, message: 'Email already registered' },
   DUPLICATE_PHONE: { statusCode: 409, message: 'Phone number already registered' },
 
-
-
   // Rate limiting errors (4xx)
   RATE_LIMIT_EXCEEDED: { statusCode: 429, message: 'Too many requests' },
-
-
 
   // File upload errors (4xx)
   FILE_UPLOAD_ERROR: { statusCode: 400, message: 'File upload failed' },
@@ -173,7 +169,7 @@ function errorHandler(error, req, res, next) {
  */
 function notFoundHandler(req, res) {
   const requestId = req.id || 'unknown';
-  
+
   res.status(404).json({
     ok: false,
     error: {

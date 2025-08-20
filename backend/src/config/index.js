@@ -14,7 +14,9 @@ try {
   const hasPath = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
   const hasJsonB64 = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
   if (!hasPath && hasJsonB64) {
-    const decoded = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON, 'base64').toString('utf8');
+    const decoded = Buffer.from(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON, 'base64').toString(
+      'utf8'
+    );
     const targetDir = path.resolve('/tmp');
     const targetPath = path.join(targetDir, 'service-account.json');
     fs.writeFileSync(targetPath, decoded, { encoding: 'utf8' });
@@ -45,7 +47,9 @@ const config = {
 
   // CORS configuration
   cors: {
-    origins: process.env.ALLOW_ORIGINS ? process.env.ALLOW_ORIGINS.split(',') : ['http://localhost:3000'],
+    origins: process.env.ALLOW_ORIGINS
+      ? process.env.ALLOW_ORIGINS.split(',')
+      : ['http://localhost:3000'],
     credentials: process.env.CORS_CREDENTIALS === 'true',
   },
 
@@ -71,8 +75,6 @@ const config = {
       fromEmail: process.env.SMTP_FROM || 'noreply@matcha.app',
     },
   },
-
-
 
   // Rate limiting configuration
   rateLimit: {
@@ -113,10 +115,7 @@ const config = {
  * Validate required configuration values
  */
 function validateConfig() {
-  const required = [
-    'firebase.projectId',
-    'firebase.credentialsPath',
-  ];
+  const required = ['firebase.projectId', 'firebase.credentialsPath'];
 
   const missing = required.filter(key => {
     const value = key.split('.').reduce((obj, k) => obj?.[k], config);
@@ -126,8 +125,6 @@ function validateConfig() {
   if (missing.length > 0) {
     throw new Error(`Missing required configuration: ${missing.join(', ')}`);
   }
-
-
 
   // Validate KMS configuration if enabled
   if (config.kms.enabled && !config.kms.keyName) {

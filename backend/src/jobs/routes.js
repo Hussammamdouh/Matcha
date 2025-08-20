@@ -9,13 +9,16 @@ const router = express.Router();
 // POST /jobs/purge-kyc-media - Purge KYC media task
 // POST /jobs/purge-deleted-accounts - Purge deleted accounts task
 
-router.post('/send-email', asyncHandler(async (req, res) => {
-  res.status(200).json({
-    ok: true,
-    data: { message: 'Job endpoints coming soon' },
-    error: null,
-    meta: { requestId: req.id },
-  });
-}));
+router.post(
+  '/send-email',
+  asyncHandler(async (req, res) => {
+    res.status(200).json({
+      ok: true,
+      data: { message: 'Job endpoints coming soon' },
+      error: null,
+      meta: { requestId: req.id },
+    });
+  })
+);
 
 module.exports = router;

@@ -1,4 +1,4 @@
-const { verifyIdToken, getUserCustomClaims } = require('../lib/firebase');
+const { verifyIdToken, getUserCustomClaims } = require('../../lib/firebase');
 const { createRequestLogger } = require('../lib/logger');
 
 /**
@@ -10,7 +10,7 @@ const { createRequestLogger } = require('../lib/logger');
 async function authenticateToken(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader) {
       return res.status(401).json({
         ok: false,
@@ -39,10 +39,10 @@ async function authenticateToken(req, res, next) {
     try {
       // Verify the Firebase ID token
       const decodedToken = await verifyIdToken(idToken);
-      
+
       // Get user custom claims for authorization
       const customClaims = await getUserCustomClaims(decodedToken.uid);
-      
+
       // Attach user information to request object
       req.user = {
         uid: decodedToken.uid,
@@ -205,7 +205,7 @@ function requireVerification(requiredStatuses) {
  */
 async function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  
+
   if (!authHeader) {
     // No token provided, continue without authentication
     return next();
@@ -218,7 +218,7 @@ async function optionalAuth(req, res, next) {
       const idToken = tokenParts[1];
       const decodedToken = await verifyIdToken(idToken);
       const customClaims = await getUserCustomClaims(decodedToken.uid);
-      
+
       req.user = {
         uid: decodedToken.uid,
         email: decodedToken.email,

@@ -1,4 +1,4 @@
-const { getAuth } = require('firebase-admin/auth');
+const { getAuth } = require('../../lib/firebase');
 const { createRequestLogger } = require('../lib/logger');
 
 /**
@@ -9,7 +9,7 @@ const { createRequestLogger } = require('../lib/logger');
  */
 async function verifyFirebaseIdToken(req, res, next) {
   const logger = createRequestLogger(req.id);
-  
+
   try {
     // Extract token from Authorization header
     const authHeader = req.headers.authorization;
@@ -43,7 +43,7 @@ async function verifyFirebaseIdToken(req, res, next) {
     // Verify the ID token with Firebase Admin
     const auth = getAuth();
     const decodedToken = await auth.verifyIdToken(idToken);
-    
+
     // Check if user is disabled
     if (decodedToken.disabled) {
       return res.status(401).json({

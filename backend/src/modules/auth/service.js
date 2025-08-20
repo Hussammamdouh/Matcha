@@ -46,5 +46,3 @@ async function loginWithEmailPassword(email, password) {
 module.exports = {
   loginWithEmailPassword,
 };
-
-

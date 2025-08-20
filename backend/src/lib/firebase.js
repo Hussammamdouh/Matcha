@@ -1,8 +1,8 @@
 const admin = require('firebase-admin');
 const { config, validateConfig } = require('../config');
-const { createLogger } = require('./logger');
+const { createModuleLogger } = require('./logger');
 
-const logger = createLogger();
+const logger = createModuleLogger('firebase');
 
 /**
  * Initialize Firebase Admin SDK
@@ -111,7 +111,7 @@ async function verifyIdToken(idToken) {
   try {
     const auth = getAuth();
     const decodedToken = await auth.verifyIdToken(idToken, true);
-    
+
     logger.debug('ID token verified successfully', {
       uid: decodedToken.uid,
       email: decodedToken.email,
@@ -157,7 +157,7 @@ async function setUserCustomClaims(uid, claims) {
   try {
     const auth = getAuth();
     await auth.setCustomUserClaims(uid, claims);
-    
+
     logger.info('User custom claims updated', {
       uid,
       claims: { ...claims, password: '[REDACTED]' }, // Redact sensitive data
@@ -182,7 +182,7 @@ async function createCustomToken(uid, additionalClaims = {}) {
   try {
     const auth = getAuth();
     const customToken = await auth.createCustomToken(uid, additionalClaims);
-    
+
     logger.debug('Custom token created', {
       uid,
       hasAdditionalClaims: Object.keys(additionalClaims).length > 0,
@@ -207,7 +207,7 @@ async function revokeRefreshTokens(uid) {
   try {
     const auth = getAuth();
     await auth.revokeRefreshTokens(uid);
-    
+
     logger.info('Refresh tokens revoked for user', { uid });
   } catch (error) {
     logger.error('Failed to revoke refresh tokens', {

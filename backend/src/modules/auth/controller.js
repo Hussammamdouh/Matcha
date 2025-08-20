@@ -1,5 +1,5 @@
 const { validationResult } = require('express-validator');
-const { getAuth, getFirestore, setUserCustomClaims } = require('../../lib/firebase');
+const { getAuth, getFirestore, setUserCustomClaims } = require('../../../lib/firebase');
 const { createRequestLogger } = require('../../lib/logger');
 const { createError, ErrorCodes } = require('../../middlewares/error');
 const { sendEmail } = require('../../lib/mail');
@@ -14,7 +14,7 @@ const { v4: uuidv4 } = require('uuid');
 async function registerWithEmail(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -29,7 +29,6 @@ async function registerWithEmail(req, res) {
   const { email, password, nickname } = req.body;
 
   try {
-
     const auth = getAuth();
     const firestore = getFirestore();
 
@@ -190,10 +189,6 @@ async function registerWithEmail(req, res) {
   }
 }
 
-
-
-
-
 /**
  * Authenticate with Google OAuth
  * @param {Object} req - Express request object
@@ -202,7 +197,7 @@ async function registerWithEmail(req, res) {
 async function authenticateWithGoogle(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -219,7 +214,7 @@ async function authenticateWithGoogle(req, res) {
   try {
     // TODO: Implement Google OAuth verification
     // Verify the Google ID token and create/update user
-    
+
     logger.info('Google OAuth authentication', {
       ip: req.ip,
     });
@@ -258,7 +253,7 @@ async function authenticateWithGoogle(req, res) {
 async function authenticateWithApple(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -275,7 +270,7 @@ async function authenticateWithApple(req, res) {
   try {
     // TODO: Implement Apple OAuth verification
     // Verify the Apple ID token and create/update user
-    
+
     logger.info('Apple OAuth authentication', {
       ip: req.ip,
     });
@@ -314,7 +309,7 @@ async function authenticateWithApple(req, res) {
 async function forgotPassword(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -329,7 +324,6 @@ async function forgotPassword(req, res) {
   const { email } = req.body;
 
   try {
-
     const auth = getAuth();
     const firestore = getFirestore();
 
@@ -340,7 +334,7 @@ async function forgotPassword(req, res) {
     } catch (error) {
       // User doesn't exist, but we don't reveal this
       logger.info('Password reset requested for non-existent email', { email });
-      
+
       return res.status(200).json({
         ok: true,
         data: {
@@ -376,7 +370,7 @@ async function forgotPassword(req, res) {
         userId: userRecord.uid,
         error: emailError.message,
       });
-      
+
       return res.status(500).json({
         ok: false,
         error: {
@@ -428,8 +422,6 @@ async function forgotPassword(req, res) {
   }
 }
 
-
-
 /**
  * Setup MFA for user account
  * @param {Object} req - Express request object
@@ -438,7 +430,7 @@ async function forgotPassword(req, res) {
 async function setupMfa(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -521,7 +513,7 @@ async function setupMfa(req, res) {
 async function verifyMfa(req, res) {
   const logger = createRequestLogger(req.id);
   const errors = validationResult(req);
-  
+
   if (!errors.isEmpty()) {
     return res.status(400).json({
       ok: false,
@@ -634,8 +626,6 @@ async function disableMfa(req, res) {
     });
   }
 }
-
-
 
 module.exports = {
   registerWithEmail,
