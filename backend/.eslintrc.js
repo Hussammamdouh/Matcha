@@ -15,6 +15,8 @@ module.exports = {
   },
   rules: {
     'prettier/prettier': 'error',
+    // Allow CRLF line endings on Windows dev machines
+    'linebreak-style': ['off'],
     'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     'no-console': 'warn',
     'prefer-const': 'error',

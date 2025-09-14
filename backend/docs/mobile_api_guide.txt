@@ -1,0 +1,180 @@
+Matcha Mobile API Guide
+
+Purpose
+This document provides a concise, implementation-oriented guide for the mobile app developer. It explains what endpoints to call, where they are located, the request/response shapes, and how unified endpoints simplify integration.
+
+Base
+- Base URL: {{baseUrl}} (e.g., https://matcha-backend-h47.fly.dev)
+- API prefix: /api/v1
+- Auth: Firebase ID Token in Authorization header unless noted
+  Authorization: Bearer <idToken>
+
+Auth (email/password and MFA)
+- POST /auth/register-email
+  Body: { email, password, nickname }
+  201 -> { ok, data: { userId, email, nickname } }
+- POST /auth/login
+  Body: { email, password }
+  200 -> { ok, data: { idToken, refreshToken? } }
+- MFA endpoints exist (setup/verify/disable) if MFA is enabled.
+
+User Profile
+- GET /me
+  Returns the current user profile with key fields.
+- PATCH /me
+  Body: { nickname?, avatarUrl? }
+- POST /me/logout (unified)
+  Body: { all: boolean } (optional, default false)
+- GET /me/stats
+  Returns counts { posts, followers, following } and the latest 20 posts by the user.
+- GET /me/likes
+  Returns posts the user liked.
+- GET /me/saves
+  Returns saved posts for the current user.
+- POST /me/avatar/upload-url
+  Body: { fileName, contentType }
+  Returns signed URL and fields for client-side upload.
+- POST /me/avatar/confirm
+  Body: { filePath } to confirm and update avatar URL.
+
+Social (Follow)
+- POST /me/follow/{targetUid}
+  Follows target user.
+- POST /me/unfollow/{targetUid}
+  Unfollows target user.
+- GET /me/following
+  Returns array of user IDs the current user follows.
+- GET /me/followers
+  Returns array of user IDs following the current user.
+
+Devices
+- POST /me/devices/register | GET /me/devices | DELETE /me/devices/{deviceId}
+- POST /me/devices/manage (unified)
+  Body examples:
+  - Register: { action: "register", platform: "ios|android|web", pushToken, deviceId }
+  - List: { action: "list" }
+  - Revoke: { action: "revoke", deviceId }
+
+Communities
+- POST /communities
+- GET /communities
+- GET /communities/{id}
+- PATCH /communities/{id}
+- POST /communities/{id}/join | POST /communities/{id}/leave
+- POST /communities/{id}/toggle-membership (unified)
+  Body: { action: "join"|"leave" } (optional, toggles if omitted)
+
+Posts
+- POST /posts (public or community)
+  Public: { title, body, visibility: "public" }
+  Community: { title, body, visibility: "community", communityId }
+  201 -> { ok, data: { id, title, ... } }
+- GET /posts/{id}
+- PATCH /posts/{id}
+- DELETE /posts/{id}
+- POST /posts/vote (unified post/comment voting)
+  Body: { entityType: "post"|"comment", entityId, value: -1|0|1 }
+- POST /posts/{id}/save | DELETE /posts/{id}/save
+- POST /posts/{id}/toggle-save (unified)
+  Body: { action: "save"|"unsave" } optional toggle if omitted
+- POST /posts/{id}/toggle-like
+  Toggles like for the current user by switching vote 1/0.
+- GET /posts/{postId}/comments
+
+Comments
+- POST /comments
+- GET /comments/{id}
+- PATCH /comments/{id}
+- DELETE /comments/{id}
+- POST /comments/{id}/vote (legacy). Prefer unified /posts/vote.
+- GET /comments/{id}/thread
+- GET /comments/{id}/stats
+
+Feed
+- GET /feed/home
+  Returns posts from joined communities and public posts from followed users. Supports sort and pagination.
+- GET /feed/saved
+  Returns current user’s saved posts.
+
+Search
+- GET /search (global) and entity-specific routes
+- GET /search/unified
+  Query: q=...&types=posts,users,communities&filters={...}
+  Returns combined results across requested types.
+
+Reports
+- POST /reports
+- GET /reports/{id}
+- PATCH /reports/{id}
+- GET /reports
+- GET /reports/stats
+- GET /reports/content/{contentType}/{contentId}
+- POST /reports/create (unified)
+  Body: { surface: "feed"|"chat"|"men", entityType: "post"|"comment"|"message"|"user", entityId, reason, details? }
+
+Storage
+- POST /storage/upload-url | POST /storage/download-url
+- GET /storage/metadata/{filePath}
+- GET /storage/exists?filePath=...
+- GET /storage/size?filePath=...
+- GET /storage/list?prefix=...
+- POST /storage/chat/sign (chat media upload signing)
+- POST /storage/sign (unified)
+  Body: { mode: "upload"|"download"|"chat", ...modeSpecificFields }
+
+Chat
+- POST /chat/heartbeat (unified)
+  Body:
+  {
+    presence?: { state: "online"|"offline" },
+    typing?: { conversationId, isTyping: boolean },
+    read?: { conversationId, at?: ISO8601 }
+  }
+- POST /chat/operations (unified common actions)
+  Body examples:
+  - { action: "create-conversation", type: "direct"|"group", memberUserId|memberUserIds: [] }
+  - { action: "send-message", conversationId, content, type: "text"|"image"|"audio" }
+  - { action: "get-messages", conversationId, pageSize?, cursor? }
+  - { action: "block-user"|"unblock-user", userId }
+  Legacy routes under /chat/conversations, /chat/messages, /chat/blocks remain usable.
+
+Admin
+- GET /admin/reports, POST /admin/reports/{id}/claim|resolve|dismiss, bulk actions
+- POST /admin/users/{uid}/role
+- POST /admin/users/{uid}/ban|unban|shadowban|unshadowban|logout-all
+- POST /admin/users/{uid}/action (unified)
+  Body: { action: "ban"|"unban"|"shadowban"|"unshadowban"|"logout-all", reason?, until? }
+- GET /admin/users/search, GET /admin/users/{uid}
+- GET/PATCH /admin/system/features, PATCH /admin/system/retention
+- Export endpoints
+
+Health & Ops
+- GET /healthz (always 200 if running)
+- GET /readyz (503 if dependencies are down)
+- GET /healthz/detailed
+- GET /metrics (Prometheus-like output)
+
+Headers & Conventions
+- Required headers for most authed routes: Authorization: Bearer <idToken>
+- CORS is open (origin=true), credentials follow server config.
+- Rate limits apply; backoff on 429.
+- IDs are strings; timestamps are ISO 8601.
+
+Unified Endpoints Summary (mobile-friendly)
+- Logout: POST /me/logout { all? }
+- Storage sign: POST /storage/sign { mode }
+- Chat heartbeat: POST /chat/heartbeat { presence|typing|read }
+- Voting: POST /posts/vote { entityType, entityId, value }
+- Save toggle: POST /posts/{id}/toggle-save { action? }
+- Report create: POST /reports/create { surface, entityType, entityId, reason, details? }
+- Search: GET /search/unified q, types, filters
+- Community membership: POST /communities/{id}/toggle-membership { action? }
+- Device manage: POST /me/devices/manage { action }
+- Chat ops: POST /chat/operations { action }
+- Admin user action: POST /admin/users/{uid}/action { action }
+
+Notes for Mobile Integration
+- Prefer unified endpoints for fewer API calls and simpler flows.
+- For uploads, use /storage/sign or /me/avatar/upload-url then PUT the file using returned URL.
+- Use /feed/home to combine joined communities + followed users’ public posts.
+- Presence/typing/read batching reduces chat chatter on mobile networks.

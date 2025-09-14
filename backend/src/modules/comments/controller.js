@@ -20,7 +20,8 @@ async function createComment(req, res) {
     const commentData = req.body;
 
     // Get user nickname from user document
-    const userDoc = await req.app.locals.db.collection('users').doc(uid).get();
+    const { db } = require('../../../lib/firebase');
+    const userDoc = await db.collection('users').doc(uid).get();
     if (!userDoc.exists) {
       return res.status(404).json({
         ok: false,
@@ -41,6 +42,11 @@ async function createComment(req, res) {
     });
 
     const comment = await commentsService.createComment(commentData, postId, uid, userNickname);
+
+    // Broadcast new comment to WebSocket clients
+    if (global.wsGateway) {
+      global.wsGateway.broadcastNewComment(postId, comment);
+    }
 
     res.status(201).json({
       ok: true,
@@ -112,15 +118,15 @@ async function createComment(req, res) {
  */
 async function getComment(req, res) {
   try {
-    const { id } = req.params;
+    const { commentId } = req.params;
     const { uid } = req.user || {};
 
     logger.info('Getting comment', {
-      commentId: id,
+      commentId: commentId,
       userId: uid,
     });
 
-    const comment = await commentsService.getComment(id, uid);
+    const comment = await commentsService.getComment(commentId, uid);
 
     if (!comment) {
       return res.status(404).json({
@@ -139,7 +145,7 @@ async function getComment(req, res) {
   } catch (error) {
     logger.error('Failed to get comment', {
       error: error.message,
-      commentId: req.params.id,
+      commentId: req.params.commentId,
       userId: req.user?.uid,
     });
 
@@ -159,17 +165,22 @@ async function getComment(req, res) {
  */
 async function updateComment(req, res) {
   try {
-    const { id } = req.params;
+    const { commentId } = req.params;
     const { uid } = req.user;
     const updateData = req.body;
 
     logger.info('Updating comment', {
-      commentId: id,
+      commentId: commentId,
       userId: uid,
       updateFields: Object.keys(updateData),
     });
 
-    const comment = await commentsService.updateComment(id, updateData, uid);
+    const comment = await commentsService.updateComment(commentId, updateData, uid);
+
+    // Broadcast comment update to WebSocket clients
+    if (global.wsGateway && comment.postId) {
+      global.wsGateway.broadcastCommentUpdate(comment.postId, comment);
+    }
 
     res.json({
       ok: true,
@@ -181,7 +192,7 @@ async function updateComment(req, res) {
   } catch (error) {
     logger.error('Failed to update comment', {
       error: error.message,
-      commentId: req.params.id,
+      commentId: req.params.commentId,
       userId: req.user?.uid,
     });
 
@@ -231,15 +242,20 @@ async function updateComment(req, res) {
  */
 async function deleteComment(req, res) {
   try {
-    const { id } = req.params;
+    const { commentId } = req.params;
     const { uid } = req.user;
 
     logger.info('Deleting comment', {
-      commentId: id,
+      commentId: commentId,
       userId: uid,
     });
 
-    await commentsService.deleteComment(id, uid);
+    const result = await commentsService.deleteComment(commentId, uid);
+
+    // Broadcast comment deletion to WebSocket clients
+    if (global.wsGateway && result.postId) {
+      global.wsGateway.broadcastCommentDeleted(result.postId, commentId);
+    }
 
     res.json({
       ok: true,
@@ -251,7 +267,7 @@ async function deleteComment(req, res) {
   } catch (error) {
     logger.error('Failed to delete comment', {
       error: error.message,
-      commentId: req.params.id,
+      commentId: req.params.commentId,
       userId: req.user?.uid,
     });
 
@@ -291,17 +307,27 @@ async function deleteComment(req, res) {
  */
 async function voteOnComment(req, res) {
   try {
-    const { id } = req.params;
+    const { commentId } = req.params;
     const { uid } = req.user;
     const { value } = req.body;
 
     logger.info('Voting on comment', {
-      commentId: id,
+      commentId: commentId,
       userId: uid,
       value,
     });
 
-    const result = await votesService.voteOnComment(id, uid, value);
+    const result = await votesService.voteOnComment(commentId, uid, value);
+
+    // Broadcast comment vote update to WebSocket clients
+    if (global.wsGateway && result.postId) {
+      global.wsGateway.broadcastCommentVote(result.postId, commentId, {
+        upvotes: result.upvotes,
+        downvotes: result.downvotes,
+        score: result.score,
+        userVote: result.userVote,
+      });
+    }
 
     res.json({
       ok: true,
@@ -313,7 +339,7 @@ async function voteOnComment(req, res) {
   } catch (error) {
     logger.error('Failed to vote on comment', {
       error: error.message,
-      commentId: req.params.id,
+      commentId: req.params.commentId,
       userId: req.user?.uid,
     });
 
@@ -397,19 +423,19 @@ async function getPostComments(req, res) {
 
 /**
  * Get comment thread
- * GET /api/v1/comments/:id/thread
+ * GET /api/v1/posts/:postId/comments/:commentId/thread
  */
 async function getCommentThread(req, res) {
   try {
-    const { id } = req.params;
+    const { commentId } = req.params;
     const { uid } = req.user || {};
 
     logger.info('Getting comment thread', {
-      commentId: id,
+      commentId: commentId,
       userId: uid,
     });
 
-    const thread = await commentsService.getCommentThread(id, uid);
+    const thread = await commentsService.getCommentThread(commentId, uid);
 
     if (!thread) {
       return res.status(404).json({
@@ -428,7 +454,7 @@ async function getCommentThread(req, res) {
   } catch (error) {
     logger.error('Failed to get comment thread', {
       error: error.message,
-      commentId: req.params.id,
+      commentId: req.params.commentId,
       userId: req.user?.uid,
     });
 
@@ -444,17 +470,17 @@ async function getCommentThread(req, res) {
 
 /**
  * Get comment statistics
- * GET /api/v1/comments/:id/stats
+ * GET /api/v1/posts/:postId/comments/:commentId/stats
  */
 async function getCommentStats(req, res) {
   try {
-    const { id } = req.params;
+    const { commentId } = req.params;
 
     logger.info('Getting comment stats', {
-      commentId: id,
+      commentId: commentId,
     });
 
-    const stats = await commentsService.getCommentStats(id);
+    const stats = await commentsService.getCommentStats(commentId);
 
     res.json({
       ok: true,
@@ -463,7 +489,7 @@ async function getCommentStats(req, res) {
   } catch (error) {
     logger.error('Failed to get comment stats', {
       error: error.message,
-      commentId: req.params.id,
+      commentId: req.params.commentId,
     });
 
     if (error.message.includes('not found')) {
@@ -485,6 +511,7 @@ async function getCommentStats(req, res) {
     });
   }
 }
+
 
 module.exports = {
   createComment,

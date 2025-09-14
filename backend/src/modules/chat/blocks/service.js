@@ -1,8 +1,8 @@
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../../lib/logger');
 
 const logger = createModuleLogger('chat:blocks:service');
-const db = getFirestore();
+let db;
 
 /**
  * Block a user
@@ -11,6 +11,7 @@ const db = getFirestore();
  * @returns {Promise<Object>} The block document
  */
 async function blockUser(userId, blockedUserId) {
+  db = db || getFirestore();
   try {
     if (userId === blockedUserId) {
       throw new Error('Cannot block yourself');
@@ -46,6 +47,7 @@ async function blockUser(userId, blockedUserId) {
  * @returns {Promise<boolean>} Success status
  */
 async function unblockUser(userId, blockedUserId) {
+  db = db || getFirestore();
   try {
     const blockId = `${userId}_${blockedUserId}`;
     const blockRef = db.collection('blocks').doc(blockId);
@@ -73,6 +75,7 @@ async function unblockUser(userId, blockedUserId) {
  * @returns {Promise<boolean>} True if blocked
  */
 async function isBlocked(userId, blockedUserId) {
+  db = db || getFirestore();
   try {
     if (userId === blockedUserId) {
       return false;
@@ -98,6 +101,7 @@ async function isBlocked(userId, blockedUserId) {
  * @returns {Promise<Object>} Paginated list of blocked users
  */
 async function getBlockedUsers(userId, options = {}) {
+  db = db || getFirestore();
   try {
     const { cursor, pageSize = 20 } = options;
 
@@ -172,6 +176,7 @@ async function getBlockedUsers(userId, options = {}) {
  * @returns {Promise<Array>} List of user IDs who blocked this user
  */
 async function getBlockedByUsers(userId) {
+  db = db || getFirestore();
   try {
     const snapshot = await db.collection('blocks')
       .where('blockedUserId', '==', userId)

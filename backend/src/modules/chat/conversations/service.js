@@ -1,10 +1,10 @@
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../../lib/logger');
 const { isParticipant, isModerator, isOwner, isBlocked } = require('../../../lib/chat/permissions');
 const { buildConversationSummary, buildParticipantSummary } = require('../../../lib/chat/preview');
-const { generateCursor, parseCursor } = require('../../../lib/ranking');
+const { encodeCursor, decodeCursor } = require('../../../lib/pagination');
 
-const db = getFirestore();
+let db;
 const logger = createModuleLogger();
 
 /**
@@ -18,6 +18,7 @@ const logger = createModuleLogger();
  * @returns {Promise<Object>} Created conversation
  */
 async function createConversation(data) {
+  db = db || getFirestore();
   const { type, createdBy, title, icon, memberUserIds } = data;
   
   try {
@@ -146,6 +147,7 @@ async function createConversation(data) {
  * @returns {Promise<Object|null>} Existing conversation or null
  */
 async function findDirectConversation(userId1, userId2) {
+  db = db || getFirestore();
   try {
     // Query for conversations where both users are participants
     const participant1Query = db
@@ -193,6 +195,7 @@ async function findDirectConversation(userId1, userId2) {
  * @returns {Promise<Object>} Conversation data
  */
 async function getConversation(conversationId, userId) {
+  db = db || getFirestore();
   try {
     // Check if user is a participant
     const participant = await isParticipant(userId, conversationId);
@@ -279,6 +282,7 @@ async function getConversation(conversationId, userId) {
  * @returns {Promise<Object>} Conversations list with pagination
  */
 async function listConversations(userId, options = {}) {
+  db = db || getFirestore();
   const { cursor, pageSize = 20 } = options;
   
   try {
@@ -318,9 +322,14 @@ async function listConversations(userId, options = {}) {
 
     // Apply cursor if provided
     if (cursor) {
-      const cursorData = parseCursor(cursor);
-      if (cursorData.lastMessageAt) {
-        conversationsQuery = conversationsQuery.where('lastMessageAt', '<', cursorData.lastMessageAt);
+      const decoded = decodeCursor(cursor);
+      if (decoded?.id) {
+        try {
+          const docSnap = await db.collection('conversations').doc(decoded.id).get();
+          if (docSnap.exists) {
+            conversationsQuery = conversationsQuery.startAfter(docSnap);
+          }
+        } catch (_) {}
       }
     }
 
@@ -401,8 +410,8 @@ async function listConversations(userId, options = {}) {
     // Generate next cursor
     let nextCursor = null;
     if (hasMore && conversations.length > 0) {
-      const lastConversation = conversations[conversations.length - 1];
-      nextCursor = generateCursor(lastConversation, 'lastMessageAt');
+      const lastDoc = conversationsSnapshot.docs[Math.min(conversationsSnapshot.docs.length - 1, pageSize - 1)];
+      nextCursor = encodeCursor({ id: lastDoc.id, createdAt: lastDoc.get('lastMessageAt') });
     }
 
     return {
@@ -429,6 +438,7 @@ async function listConversations(userId, options = {}) {
  * @returns {Promise<Object>} Updated conversation
  */
 async function joinConversation(conversationId, userId) {
+  db = db || getFirestore();
   try {
     // Check if conversation exists
     const conversationDoc = await db.collection('conversations').doc(conversationId).get();
@@ -490,6 +500,7 @@ async function joinConversation(conversationId, userId) {
  * @returns {Promise<boolean>} Success status
  */
 async function leaveConversation(conversationId, userId) {
+  db = db || getFirestore();
   try {
     // Check if user is a participant
     const participant = await isParticipant(userId, conversationId);
@@ -541,6 +552,7 @@ async function leaveConversation(conversationId, userId) {
  * @returns {Promise<Object>} Updated conversation
  */
 async function updateConversation(conversationId, userId, updates) {
+  db = db || getFirestore();
   try {
     // Check if user is moderator or owner
     const isMod = await isModerator(userId, conversationId);
@@ -604,6 +616,7 @@ async function updateConversation(conversationId, userId, updates) {
  * @returns {Promise<boolean>} Success status
  */
 async function toggleMute(conversationId, userId, isMuted) {
+  db = db || getFirestore();
   try {
     // Check if user is a participant
     const participant = await isParticipant(userId, conversationId);
@@ -647,6 +660,7 @@ async function toggleMute(conversationId, userId, isMuted) {
  * @returns {Promise<boolean>} Success status
  */
 async function banUser(conversationId, moderatorId, targetUserId) {
+  db = db || getFirestore();
   try {
     // Check if moderator has permission
     const isMod = await isModerator(moderatorId, conversationId);

@@ -15,6 +15,7 @@ const {
 const {
   createPost,
   getPost,
+  listPosts,
   updatePost,
   deletePost,
   voteOnPost,
@@ -25,12 +26,16 @@ const {
   getSavedPosts,
 } = require('./controller');
 
+
 const router = express.Router();
 
 /**
  * Posts API Routes
  * All routes are prefixed with /api/v1/posts
  */
+
+// List posts (public)
+router.get('/', listPosts);
 
 // Create post (requires authentication)
 router.post('/', authenticateToken, generalRateLimiter, createPostValidation, validate, createPost);
@@ -68,6 +73,90 @@ router.post(
   voteOnPost
 );
 
+// Toggle like (upvote/unlike) for a post
+router.post(
+  '/:id/toggle-like',
+  authenticateToken,
+  generalRateLimiter,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.uid;
+      const votesService = require('../votes/service');
+
+      const current = await votesService.getUserPostVote(id, userId);
+      const nextValue = current === 1 ? 0 : 1;
+      const result = await votesService.voteOnPost(id, userId, nextValue);
+
+      return res.json({ ok: true, data: { liked: nextValue === 1, ...result } });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: { code: 'TOGGLE_LIKE_FAILED', message: 'Failed to toggle like' } });
+    }
+  }
+);
+
+// Unified vote endpoint - supports both posts and comments
+// POST /api/v1/vote { entityType: 'post'|'comment', entityId: '...', value: 1|-1|0 }
+router.post(
+  '/vote',
+  authenticateToken,
+  generalRateLimiter,
+  async (req, res) => {
+    try {
+      const { entityType, entityId, value } = req.body;
+      const userId = req.user.uid;
+
+      if (!entityType || !entityId || value === undefined) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'MISSING_PARAMETERS', message: 'entityType, entityId, and value are required' }
+        });
+      }
+
+      if (!['post', 'comment'].includes(entityType)) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'INVALID_ENTITY_TYPE', message: 'entityType must be post or comment' }
+        });
+      }
+
+      if (![-1, 0, 1].includes(value)) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'INVALID_VOTE_VALUE', message: 'value must be -1, 0, or 1' }
+        });
+      }
+
+      const votesService = require('../votes/service');
+      let result;
+      
+      if (entityType === 'post') {
+        result = await votesService.voteOnPost(entityId, userId, value);
+      } else {
+        result = await votesService.voteOnComment(entityId, userId, value);
+      }
+
+      res.json({
+        ok: true,
+        data: {
+          entityType,
+          entityId,
+          userVote: result.userVote,
+          upvotes: result.upvotes,
+          downvotes: result.downvotes,
+          score: result.score,
+          hotScore: result.hotScore || null
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: { code: 'VOTE_FAILED', message: 'Failed to process vote' }
+      });
+    }
+  }
+);
+
 // Save post (requires authentication)
 router.post(
   '/:id/save',
@@ -87,5 +176,65 @@ router.delete(
   validate,
   unsavePost
 );
+
+// Unified save/unsave toggle endpoint
+// POST /api/v1/posts/:id/toggle-save { action: 'save'|'unsave' } or just POST to toggle
+router.post(
+  '/:id/toggle-save',
+  authenticateToken,
+  generalRateLimiter,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { action } = req.body;
+      const userId = req.user.uid;
+
+      // Check if post is already saved
+      const { getFirestore } = require('../../../lib/firebase');
+      const firestore = getFirestore();
+      const savedDoc = await firestore
+        .collection('users')
+        .doc(userId)
+        .collection('savedPosts')
+        .doc(id)
+        .get();
+
+      const isCurrentlySaved = savedDoc.exists;
+      let shouldSave;
+
+      if (action) {
+        // Explicit action provided
+        shouldSave = action === 'save';
+      } else {
+        // Toggle based on current state
+        shouldSave = !isCurrentlySaved;
+      }
+
+      if (shouldSave && !isCurrentlySaved) {
+        // Save the post
+        return savePost(req, res);
+      } else if (!shouldSave && isCurrentlySaved) {
+        // Unsave the post
+        return unsavePost(req, res);
+      } else {
+        // Already in desired state
+        res.json({
+          ok: true,
+          data: {
+            postId: id,
+            saved: shouldSave,
+            message: `Post is already ${shouldSave ? 'saved' : 'unsaved'}`
+          }
+        });
+      }
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: { code: 'SAVE_TOGGLE_FAILED', message: 'Failed to toggle save status' }
+      });
+    }
+  }
+);
+
 
 module.exports = router;

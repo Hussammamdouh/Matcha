@@ -1,0 +1,537 @@
+{
+  "info": {
+    "name": "Matcha Complete API",
+    "description": "Complete API collection for Matcha backend - all modules and endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "matcha-complete-api-456",
+    "version": "2.1.0"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://matcha-backend-h47.fly.dev", "type": "string" },
+    { "key": "authToken", "value": "your_firebase_id_token_here", "type": "string" },
+    { "key": "adminToken", "value": "your_admin_firebase_id_token_here", "type": "string" },
+    { "key": "userId", "value": "user_id_here", "type": "string" },
+    { "key": "postId", "value": "post_id_here", "type": "string" },
+    { "key": "commentId", "value": "comment_id_here", "type": "string" },
+    { "key": "communityId", "value": "community_id_here", "type": "string" },
+    { "key": "conversationId", "value": "conversation_id_here", "type": "string" },
+    { "key": "deviceId", "value": "device_id_here", "type": "string" },
+    { "key": "reportId", "value": "report_id_here", "type": "string" },
+    { "key": "exportJobId", "value": "export_job_id_here", "type": "string" },
+    { "key": "reviewId", "value": "review_id_here", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health & Status",
+      "description": "Operational endpoints to check service health, readiness for dependencies, and basic metrics. Useful for monitoring and troubleshooting.",
+      "item": [
+        { "name": "Health Check", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] } } },
+        { "name": "Ready Check", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/readyz", "host": ["{{baseUrl}}"], "path": ["readyz"] } } },
+        { "name": "Detailed Health", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/healthz/detailed", "host": ["{{baseUrl}}"], "path": ["healthz","detailed"] } } },
+        { "name": "Metrics", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/metrics", "host": ["{{baseUrl}}"], "path": ["metrics"] } } }
+      ]
+    },
+    {
+      "name": "Social",
+      "description": "Follow system endpoints. Use these to follow/unfollow users and fetch your followers/following lists.",
+      "item": [
+        { "name": "Follow User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/follow/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","me","follow","{{userId}}"] } } },
+        { "name": "Unfollow User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/unfollow/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","me","unfollow","{{userId}}"] } } },
+        { "name": "List Following", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/following", "host": ["{{baseUrl}}"], "path": ["api","v1","me","following"] } } },
+        { "name": "List Followers", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/followers", "host": ["{{baseUrl}}"], "path": ["api","v1","me","followers"] } } }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "description": "Auth lifecycle including email/password registration, login, OAuth providers, and multi-factor operations.",
+      "item": [
+        { "name": "Register with Email", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"nickname\": \"testuser\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/register-email", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","register-email"] } } },
+        { "name": "Login with Email", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] } } },
+        { "name": "Google OAuth", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"idToken\": \"google_id_token_here\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/oauth/google", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","oauth","google"] } } },
+        { "name": "Apple OAuth", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"idToken\": \"apple_id_token_here\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/oauth/apple", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","oauth","apple"] } } },
+        { "name": "Request Password Reset", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/password/forgot", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","password","forgot"] } } },
+        { "name": "Setup MFA", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"totp\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/mfa/setup", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","mfa","setup"] } } },
+        { "name": "Verify MFA", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"totp\",\n  \"code\": \"123456\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/mfa/verify", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","mfa","verify"] } } },
+        { "name": "Disable MFA", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/auth/mfa/disable", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","mfa","disable"] } } }
+      ]
+    },
+    {
+      "name": "User Profile",
+      "description": "Current user profile management. Includes profile read/update, avatar upload, logout(s), and profile-centric lists: stats, likes, saves.",
+      "description": "User profile management and email verification.",
+      "item": [
+        { "name": "Get Current User Profile", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me", "host": ["{{baseUrl}}"], "path": ["api","v1","me"] } } },
+        { "name": "Get My Stats & Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/stats", "host": ["{{baseUrl}}"], "path": ["api","v1","me","stats"] } } },
+        { "name": "Get My Liked Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/likes?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","likes"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get My Saved Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/saves?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","saves"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Update User Profile", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"nickname\": \"new_nickname123\",\n  \"avatarUrl\": \"https://example.com/avatar.jpg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me", "host": ["{{baseUrl}}"], "path": ["api","v1","me"] } } },
+        { "name": "Send Email Verification", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/email/verify/send", "host": ["{{baseUrl}}"], "path": ["api","v1","me","email","verify","send"] } } },
+        { "name": "Logout", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"all\": false\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/logout", "host": ["{{baseUrl}}"], "path": ["api","v1","me","logout"] } } },
+        { "name": "Logout All Devices", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/logout-all", "host": ["{{baseUrl}}"], "path": ["api","v1","me","logout-all"] } } },
+        { "name": "Delete Account", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me", "host": ["{{baseUrl}}"], "path": ["api","v1","me"] } } },
+        { "name": "Generate Avatar Upload URL", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"fileName\": \"avatar.jpg\",\n  \"contentType\": \"image/jpeg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/avatar/upload-url", "host": ["{{baseUrl}}"], "path": ["api","v1","me","avatar","upload-url"] } } },
+        { "name": "Confirm Avatar Upload", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"filePath\": \"avatars/user123/avatar.jpg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/avatar/confirm", "host": ["{{baseUrl}}"], "path": ["api","v1","me","avatar","confirm"] } } },
+        { "name": "Get User Settings", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/settings", "host": ["{{baseUrl}}"], "path": ["api","v1","me","settings"] } } },
+        { "name": "Update User Settings", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"accountPrivacy\": \"private\",\n  \"showLikedPosts\": false,\n  \"showFollowing\": true,\n  \"showFollowers\": false\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/settings", "host": ["{{baseUrl}}"], "path": ["api","v1","me","settings"] } } },
+        { "name": "Get User Communities", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/communities?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","communities"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Detailed Followers", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/followers?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","followers"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Detailed Following", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/following?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","following"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Blocked Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/blocked?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","blocked"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Block User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"blockedUserId\": \"{{userId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/block", "host": ["{{baseUrl}}"], "path": ["api","v1","me","block"] } } },
+        { "name": "Unblock User", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/block/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","me","block","{{userId}}"] } } }
+      ]
+    },
+    {
+      "name": "Devices",
+      "description": "Manage the current device for notifications and sessions. Unified manage endpoint supports register/list/revoke.",
+      "item": [
+        { "name": "Register Device", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"platform\": \"web\",\n  \"pushToken\": \"push_token_here\",\n  \"deviceId\": \"{{deviceId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/devices/register", "host": ["{{baseUrl}}"], "path": ["api","v1","me","devices","register"] } } },
+        { "name": "Get User Devices", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/devices", "host": ["{{baseUrl}}"], "path": ["api","v1","me","devices"] } } },
+        { "name": "Revoke Device", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/devices/{{deviceId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","me","devices","{{deviceId}}"] } } },
+        { "name": "Manage Device (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"action\": \"register\",\n  \"platform\": \"web\",\n  \"pushToken\": \"push_token_here\",\n  \"deviceId\": \"{{deviceId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/devices/manage", "host": ["{{baseUrl}}"], "path": ["api","v1","me","devices","manage"] } } }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "description": "User sessions listing (placeholder). Future improvements will expose active sessions.",
+      "item": [
+        { "name": "Get User Sessions", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/sessions", "host": ["{{baseUrl}}"], "path": ["api","v1","me","sessions"] } } }
+      ]
+    },
+    {
+      "name": "Communities",
+      "description": "Community CRUD and membership. Use toggle-membership for a single endpoint to join or leave.",
+      "item": [
+        { "name": "Create Community", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"name\": \"Test Community\",\n  \"slug\": \"test-community\",\n  \"description\": \"A test community\",\n  \"isPrivate\": false\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/communities", "host": ["{{baseUrl}}"], "path": ["api","v1","communities"] } } },
+        { "name": "List Communities", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/communities", "host": ["{{baseUrl}}"], "path": ["api","v1","communities"] } } },
+        { "name": "Get Community", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}"] } } },
+        { "name": "Update Community", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"displayName\": \"Updated Community Name\",\n  \"description\": \"Updated description\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}"] } } },
+        { "name": "Join Community", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/join", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","join"] } } },
+        { "name": "Leave Community", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/leave", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","leave"] } } },
+        { "name": "Get Community Moderators", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/moderators", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","moderators"] } } },
+        { "name": "Get Detailed Moderators", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/moderators/detailed?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","moderators","detailed"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Add Moderator", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"userId\": \"{{userId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/moderators", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","moderators"] } } },
+        { "name": "Remove Moderator", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/moderators/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","moderators","{{userId}}"] } } },
+        { "name": "Ban User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"userId\": \"{{userId}}\",\n  \"reason\": \"Violation of community guidelines\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/ban", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","ban"] } } },
+        { "name": "Unban User", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/ban/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","ban","{{userId}}"] } } },
+        { "name": "Get Banned Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/banned?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","banned"], "query": [ {"key":"pageSize","value":"20"} ] } } }
+      ]
+    },
+    {
+      "name": "Posts",
+      "description": "Public and community posts. Unified endpoints for voting and save toggling simplify integration.",
+      "item": [
+        { "name": "List Posts", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/posts?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Create Post (Public)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Public Post\",\n  \"body\": \"This is a public post\",\n  \"visibility\": \"public\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
+        { "name": "Create Post (Community)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Community Post\",\n  \"body\": \"This is a community post\",\n  \"visibility\": \"community\",\n  \"communityId\": \"{{communityId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
+        { "name": "Get Post", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}"] } } },
+        { "name": "Update Post", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Updated Post Title\",\n  \"body\": \"Updated post content\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}"] } } },
+        { "name": "Delete Post", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}"] } } },
+        { "name": "Vote (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"entityType\": \"post\",\n  \"entityId\": \"{{postId}}\",\n  \"value\": 1\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/vote", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","vote"] } } },
+        { "name": "Toggle Save (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"action\": \"save\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/toggle-save", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","toggle-save"] } } },
+        { "name": "Toggle Like", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/toggle-like", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","toggle-like"] } } },
+        { "name": "Save Post", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/save", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","save"] } } },
+        { "name": "Unsave Post", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/save", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","save"] } } }
+      ]
+    },
+    {
+      "name": "Comments",
+      "description": "Post-specific comment CRUD and related info (threads, stats). All comment operations are scoped to specific posts with realtime WebSocket support.",
+      "item": [
+        {
+          "name": "Get Post Comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments?sort=new&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments"],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "new",
+                  "description": "Sort order: new, old, top"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "Number of comments per page (1-50)"
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "description": "Pagination cursor (optional)"
+                }
+              ]
+            },
+            "description": "Get all comments for a specific post. Supports sorting and pagination."
+          }
+        },
+        {
+          "name": "Create Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"This is my comment on this post!\",\n  \"parentId\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments"]
+            },
+            "description": "Create a new comment for a specific post. Requires authentication."
+          }
+        },
+        {
+          "name": "Create Reply Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"This is a reply to the comment above!\",\n  \"parentId\": \"{{commentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments"]
+            },
+            "description": "Create a reply to an existing comment. The parentId should be the ID of the comment you're replying to."
+          }
+        },
+        {
+          "name": "Get Comment by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}"]
+            },
+            "description": "Get a specific comment by its ID."
+          }
+        },
+        {
+          "name": "Update Comment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"This is my updated comment!\",\n  \"edited\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}"]
+            },
+            "description": "Update a comment. Only the author can edit their own comment."
+          }
+        },
+        {
+          "name": "Delete Comment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}"]
+            },
+            "description": "Delete a comment. Only the author, post owner, or moderators can delete comments."
+          }
+        },
+        {
+          "name": "Vote on Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments/{{commentId}}/vote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}", "vote"]
+            },
+            "description": "Vote on a comment. Value: 1 (upvote), -1 (downvote), 0 (remove vote)."
+          }
+        },
+        {
+          "name": "Get Comment Thread",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments/{{commentId}}/thread",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}", "thread"]
+            },
+            "description": "Get a comment and all its replies (thread)."
+          }
+        },
+        {
+          "name": "Get Comment Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments/{{commentId}}/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}", "stats"]
+            },
+            "description": "Get statistics for a specific comment."
+          }
+        }
+      ]
+    },
+    {
+      "name": "WebSocket Events",
+      "description": "Realtime WebSocket events for comments and chat functionality.",
+      "item": [
+        {
+          "name": "Join Post Room",
+          "request": {
+            "method": "WS",
+            "header": [],
+            "url": {
+              "raw": "ws://{{baseUrl}}",
+              "protocol": "ws",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "WebSocket connection to join a post room for realtime comment updates."
+          },
+          "event": [
+            {
+              "listen": "message",
+              "script": {
+                "exec": [
+                  "// Send join_post event",
+                  "socket.emit('join_post', pm.variables.get('postId'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listen for Comment Events",
+          "request": {
+            "method": "WS",
+            "header": [],
+            "url": {
+              "raw": "ws://{{baseUrl}}",
+              "protocol": "ws",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Listen for realtime comment events after joining a post room."
+          },
+          "event": [
+            {
+              "listen": "message",
+              "script": {
+                "exec": [
+                  "// Listen for comment events",
+                  "socket.on('new_comment', (data) => {",
+                  "  console.log('New comment:', data);",
+                  "});",
+                  "",
+                  "socket.on('comment_updated', (data) => {",
+                  "  console.log('Comment updated:', data);",
+                  "});",
+                  "",
+                  "socket.on('comment_deleted', (data) => {",
+                  "  console.log('Comment deleted:', data);",
+                  "});",
+                  "",
+                  "socket.on('comment_vote_updated', (data) => {",
+                  "  console.log('Comment vote updated:', data);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "description": "Conversations and messaging. Unified chat heartbeat batches presence/typing/read; operations endpoint batches common actions.",
+      "item": [
+        { "name": "Create Direct Conversation", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"direct\",\n  \"memberUserId\": \"{{userId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations"] } } },
+        { "name": "Create Group Conversation", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"group\",\n  \"title\": \"Test Group\",\n  \"memberUserIds\": [\"{{userId}}\", \"user789\"]\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations"] } } },
+        { "name": "List Conversations", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Conversation", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}"] } } },
+        { "name": "Join Conversation", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/join", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","join"] } } },
+        { "name": "Leave Conversation", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/leave", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","leave"] } } },
+        { "name": "Update Conversation", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Updated Group Title\",\n  \"icon\": \"https://example.com/new-icon.png\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}"] } } },
+        { "name": "Toggle Mute", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"isMuted\": true\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/mute", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","mute"] } } },
+        { "name": "Send Text Message", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"content\": \"Hello! This is a test message.\",\n  \"type\": \"text\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/messages", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","messages"] } } },
+        { "name": "Get Conversation Messages", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/messages?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","messages"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Presence Heartbeat", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"state\": \"online\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/presence/heartbeat", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","presence","heartbeat"] } } },
+        { "name": "Chat Heartbeat (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"presence\": { \"state\": \"online\" },\n  \"typing\": { \"conversationId\": \"{{conversationId}}\", \"isTyping\": true },\n  \"read\": { \"conversationId\": \"{{conversationId}}\" }\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/heartbeat", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","heartbeat"] } } },
+        { "name": "Chat Operations (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"action\": \"send-message\",\n  \"conversationId\": \"{{conversationId}}\",\n  \"content\": \"Hello\",\n  \"type\": \"text\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/operations", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","operations"] } } },
+        { "name": "Typing", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"isTyping\": true\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/typing", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","typing"] } } },
+        { "name": "Mark as Read", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"at\": \"{{$timestamp}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/read", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","read"] } } },
+        { "name": "Block User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"userId\": \"{{userId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/blocks", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","blocks"] } } },
+        { "name": "Unblock User", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/blocks/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","blocks","{{userId}}"] } } },
+        { "name": "Get Blocked Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/blocks?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","blocks"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Create Report (Chat)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"message\",\n  \"targetId\": \"message-id\",\n  \"conversationId\": \"{{conversationId}}\",\n  \"reasonCode\": \"spam\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/reports", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports"] } } },
+        { "name": "Get Reports (Chat)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/reports?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Report (Chat)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports","{{reportId}}"] } } },
+        { "name": "Update Report Status (Chat)", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"status\": \"resolved\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}/status", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports","{{reportId}}","status"] } } }
+      ]
+    },
+    {
+      "name": "Storage",
+      "description": "File storage utilities: sign upload/download URLs, list, metadata. Unified \"sign\" endpoint selects upload/download/chat modes.",
+      "item": [
+        { "name": "Generate Upload URL", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"fileName\": \"test-image.jpg\",\n  \"contentType\": \"image/jpeg\",\n  \"folder\": \"avatars\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/storage/upload-url", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","upload-url"] } } },
+        { "name": "Generate Download URL", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"filePath\": \"path/to/file.jpg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/storage/download-url", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","download-url"] } } },
+        { "name": "Delete File", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/storage/files/file_name_here", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","files","file_name_here"] } } },
+        { "name": "Get File Metadata", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/storage/metadata/path/to/file.jpg", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","metadata","path","to","file.jpg"] } } },
+        { "name": "Check File Exists", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/storage/exists?filePath=path/to/file.jpg", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","exists"], "query": [ {"key":"filePath","value":"path/to/file.jpg"} ] } } },
+        { "name": "Get File Size", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/storage/size?filePath=path/to/file.jpg", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","size"], "query": [ {"key":"filePath","value":"path/to/file.jpg"} ] } } },
+        { "name": "List Files", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/storage/list?prefix=avatars/", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","list"], "query": [ {"key":"prefix","value":"avatars/"} ] } } },
+        { "name": "Generate Chat Media Upload URL", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"conversationId\": \"{{conversationId}}\",\n  \"type\": \"image\",\n  \"mime\": \"image/jpeg\",\n  \"size\": 1024000\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/storage/chat/sign", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","chat","sign"] } } },
+        { "name": "Sign (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"mode\": \"upload\",\n  \"filePath\": \"path/to/file.jpg\",\n  \"contentType\": \"image/jpeg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/storage/sign", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","sign"] } } }
+      ]
+    },
+    {
+      "name": "Search",
+      "description": "Global and scoped search. Unified search lets you fetch posts/users/communities (and trending) in one request.",
+      "item": [
+        { "name": "Global Search", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/search?q=test&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","search"], "query": [ {"key":"q","value":"test"},{"key":"pageSize","value":"20"} ] } } },
+        { "name": "Search Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/search/posts?q=test&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","search","posts"], "query": [ {"key":"q","value":"test"},{"key":"pageSize","value":"20"} ] } } },
+        { "name": "Search Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/search/users?q=test&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","search","users"], "query": [ {"key":"q","value":"test"},{"key":"pageSize","value":"20"} ] } } },
+        { "name": "Search Communities", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/search/communities?q=test&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","search","communities"], "query": [ {"key":"q","value":"test"},{"key":"pageSize","value":"20"} ] } } },
+        { "name": "Trending Posts", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/search/trending?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","search","trending"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Unified Search", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/search/unified?q=test&types=posts,users,communities", "host": ["{{baseUrl}}"], "path": ["api","v1","search","unified"], "query": [ {"key":"q","value":"test"},{"key":"types","value":"posts,users,communities"} ] } } }
+      ]
+    },
+    {
+      "name": "Reports",
+      "description": "User-facing reports across surfaces (feed, chat, men). Use unified creation endpoint to report any entity.",
+      "item": [
+        { "name": "Create Report", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"post\",\n  \"targetId\": \"{{postId}}\",\n  \"reason\": \"spam\",\n  \"description\": \"This post contains spam content\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reports", "host": ["{{baseUrl}}"], "path": ["api","v1","reports"] } } },
+        { "name": "Get Report", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reports/{{reportId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","reports","{{reportId}}"] } } },
+        { "name": "Update Report", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"status\": \"resolved\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reports/{{reportId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","reports","{{reportId}}"] } } },
+        { "name": "Get Reports", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reports?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","reports"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Report Stats", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reports/stats", "host": ["{{baseUrl}}"], "path": ["api","v1","reports","stats"] } } },
+        { "name": "Get Content Reports", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reports/content/post/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","reports","content","post","{{postId}}"] } } },
+        { "name": "Create Report (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"surface\": \"feed\",\n  \"entityType\": \"post\",\n  \"entityId\": \"{{postId}}\",\n  \"reason\": \"spam\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reports/create", "host": ["{{baseUrl}}"], "path": ["api","v1","reports","create"] } } }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "Moderator/Admin tools. Unified user action endpoint covers ban/unban/shadowban/logout-all in one route.",
+      "item": [
+        { "name": "Reports - List (Moderator)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/reports?limit=20", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reports"], "query": [ {"key":"limit","value":"20"} ] } } },
+        { "name": "Reports - Claim", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"surface\": \"feed\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/reports/{{reportId}}/claim", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reports","{{reportId}}","claim"] } } },
+        { "name": "Reports - Resolve", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"surface\": \"feed\",\n  \"resolutionCode\": \"removed\",\n  \"note\": \"Handled\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/reports/{{reportId}}/resolve", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reports","{{reportId}}","resolve"] } } },
+        { "name": "Reports - Dismiss", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"surface\": \"feed\",\n  \"note\": \"Invalid\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/reports/{{reportId}}/dismiss", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reports","{{reportId}}","dismiss"] } } },
+        { "name": "Reports - Bulk Resolve", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"reportIds\": [\"{{reportId}}\"],\n  \"surface\": \"feed\",\n  \"resolutionCode\": \"removed\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/reports/bulk/resolve", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reports","bulk","resolve"] } } },
+        { "name": "Reports - Bulk Dismiss", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"reportIds\": [\"{{reportId}}\"],\n  \"surface\": \"feed\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/reports/bulk/dismiss", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reports","bulk","dismiss"] } } },
+        { "name": "Users - Set Role (Admin)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"role\": \"moderator\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/role", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","role"] } } },
+        { "name": "Users - Ban (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"reason\": \"Abuse\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/ban", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","ban"] } } },
+        { "name": "Users - Unban (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/unban", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","unban"] } } },
+        { "name": "Users - Shadowban (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"reason\": \"Spam\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/shadowban", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","shadowban"] } } },
+        { "name": "Users - Unshadowban (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/unshadowban", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","unshadowban"] } } },
+        { "name": "Users - Logout All (Admin)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/logout-all", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","logout-all"] } } },
+        { "name": "Users - Action (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"action\": \"ban\",\n  \"reason\": \"Abuse\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}/action", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}","action"] } } },
+        { "name": "Users - Search (Moderator)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/users/search?q=test&limit=20", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","search"], "query": [ {"key":"q","value":"test"},{"key":"limit","value":"20"} ] } } },
+        { "name": "Users - Get Details (Moderator)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","users","{{userId}}"] } } },
+        { "name": "System - Get Features (Admin)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/system/features", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","system","features"] } } },
+        { "name": "System - Update Features (Admin)", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"updates\": { \"kyc\": true }\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/system/features", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","system","features"] } } },
+        { "name": "System - Update Retention (Admin)", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"days\": 30\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/admin/system/retention", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","system","retention"] } } },
+        { "name": "Gender Reviews - List (Moderator)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/reviews/gender?limit=20", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reviews","gender"], "query": [ {"key":"limit","value":"20"} ] } } },
+        { "name": "Gender Reviews - Approve (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/reviews/gender/{{userId}}/approve", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reviews","gender","{{userId}}","approve"] } } },
+        { "name": "Gender Reviews - Reject (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/reviews/gender/{{userId}}/reject", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","reviews","gender","{{userId}}","reject"] } } },
+        { "name": "Exports - Create User Export (Moderator)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/export/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","export","users","{{userId}}"] } } },
+        { "name": "Exports - Get Job (Moderator)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/export/jobs/{{exportJobId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","export","jobs","{{exportJobId}}"] } } },
+        { "name": "Audits - List (Moderator)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{adminToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/admin/audits?limit=20", "host": ["{{baseUrl}}"], "path": ["api","v1","admin","audits"], "query": [ {"key":"limit","value":"20"} ] } } }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "description": "Operational background tasks exposed via HTTP to trigger specific jobs like email and media cleanup.",
+      "item": [
+        { "name": "Send Email Job", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"to\": \"user@example.com\",\n  \"subject\": \"Hello\",\n  \"text\": \"Hi there\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/jobs/send-email", "host": ["{{baseUrl}}"], "path": ["api","v1","jobs","send-email"] } } },
+        { "name": "Purge Men Originals Job", "request": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/jobs/purge-men-originals", "host": ["{{baseUrl}}"], "path": ["api","v1","jobs","purge-men-originals"] } } }
+      ]
+    },
+    {
+      "name": "Men Reviews",
+      "description": "Men Reviews module: create and vote on reviews (red/green/unknown), threaded comments, and aggregation.",
+      "item": [
+        { "name": "Get Aggregated Reviews", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reviews/aggregate?limit=20", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","aggregate"], "query": [ {"key":"limit","value":"20"} ] } } },
+        { "name": "Create Review", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"communityId\": \"{{communityId}}\",\n  \"targetId\": \"some-target\",\n  \"label\": \"red\",\n  \"comment\": \"Suspicious behavior\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reviews", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews"] } } },
+        { "name": "Get Review", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}"] } } },
+        { "name": "Vote on Review", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"label\": \"green\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}/vote", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}","vote"] } } },
+        { "name": "List Review Comments", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}/comments", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}","comments"] } } },
+        { "name": "Add Review Comment", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"body\": \"I agree\",\n  \"parentCommentId\": null\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}/comments", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}","comments"] } } }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "description": "Inbound webhooks (e.g., KYC providers).",
+      "item": [
+        { "name": "KYC Provider Webhook", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"event\": \"test\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/webhooks/kyc/sumsub", "host": ["{{baseUrl}}"], "path": ["api","v1","webhooks","kyc","sumsub"] } } }
+      ]
+    }
+  ]
+}

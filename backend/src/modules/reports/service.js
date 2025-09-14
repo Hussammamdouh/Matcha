@@ -1,6 +1,6 @@
 const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../lib/logger');
-const { generateCursor, parseCursor } = require('../../lib/ranking');
+const { encodeCursor, decodeCursor } = require('../../lib/pagination');
 
 const db = getFirestore();
 const logger = createModuleLogger();
@@ -208,9 +208,14 @@ async function listReports(options = {}) {
 
     // Apply pagination
     if (cursor) {
-      const parsedCursor = parseCursor(cursor);
-      if (parsedCursor) {
-        // TODO: Implement cursor-based pagination
+      const decoded = decodeCursor(cursor);
+      if (decoded?.id) {
+        try {
+          const docSnap = await db.collection('reports').doc(decoded.id).get();
+          if (docSnap.exists) {
+            query = query.startAfter(docSnap);
+          }
+        } catch (_) {}
       }
     }
 
@@ -240,7 +245,7 @@ async function listReports(options = {}) {
     let nextCursor = null;
     if (reports.length === pageSize) {
       const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      nextCursor = generateCursor(lastDoc.data(), 'reports');
+      nextCursor = encodeCursor({ id: lastDoc.id, createdAt: lastDoc.get('createdAt') });
     }
 
     return {
@@ -278,9 +283,14 @@ async function getUserReports(userId, options = {}) {
 
     // Apply pagination
     if (cursor) {
-      const parsedCursor = parseCursor(cursor);
-      if (parsedCursor) {
-        // TODO: Implement cursor-based pagination
+      const decoded = decodeCursor(cursor);
+      if (decoded?.id) {
+        try {
+          const docSnap = await db.collection('reports').doc(decoded.id).get();
+          if (docSnap.exists) {
+            query = query.startAfter(docSnap);
+          }
+        } catch (_) {}
       }
     }
 
@@ -300,7 +310,7 @@ async function getUserReports(userId, options = {}) {
     let nextCursor = null;
     if (reports.length === pageSize) {
       const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      nextCursor = generateCursor(lastDoc.data(), 'user_reports');
+      nextCursor = encodeCursor({ id: lastDoc.id, createdAt: lastDoc.get('createdAt') });
     }
 
     return {

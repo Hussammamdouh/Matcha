@@ -23,13 +23,16 @@ const {
 const router = express.Router();
 
 /**
- * Comments API Routes
- * All routes are prefixed with /api/v1/comments
+ * Post Comments API Routes
+ * All routes are prefixed with /api/v1/posts/:postId/comments
  */
 
-// Create comment (requires authentication)
+// Get post comments (public)
+router.get('/:postId/comments', getPostCommentsValidation, validate, getPostComments);
+
+// Create comment for a post (requires authentication)
 router.post(
-  '/',
+  '/:postId/comments',
   authenticateToken,
   generalRateLimiter,
   createCommentValidation,
@@ -37,12 +40,12 @@ router.post(
   createComment
 );
 
-// Get comment by ID (public)
-router.get('/:id', getCommentValidation, validate, getComment);
+// Get specific comment by ID (public)
+router.get('/:postId/comments/:commentId', getCommentValidation, validate, getComment);
 
 // Update comment (requires authentication + authorship)
 router.patch(
-  '/:id',
+  '/:postId/comments/:commentId',
   authenticateToken,
   generalRateLimiter,
   updateCommentValidation,
@@ -52,7 +55,7 @@ router.patch(
 
 // Delete comment (requires authentication + authorship/moderation)
 router.delete(
-  '/:id',
+  '/:postId/comments/:commentId',
   authenticateToken,
   generalRateLimiter,
   getCommentValidation,
@@ -62,7 +65,7 @@ router.delete(
 
 // Vote on comment (requires authentication)
 router.post(
-  '/:id/vote',
+  '/:postId/comments/:commentId/vote',
   authenticateToken,
   generalRateLimiter,
   voteCommentValidation,
@@ -71,9 +74,9 @@ router.post(
 );
 
 // Get comment thread (public)
-router.get('/:id/thread', getCommentValidation, validate, getCommentThread);
+router.get('/:postId/comments/:commentId/thread', getCommentValidation, validate, getCommentThread);
 
 // Get comment statistics (public)
-router.get('/:id/stats', getCommentValidation, validate, getCommentStats);
+router.get('/:postId/comments/:commentId/stats', getCommentValidation, validate, getCommentStats);
 
 module.exports = router;

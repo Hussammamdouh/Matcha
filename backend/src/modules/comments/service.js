@@ -1,10 +1,11 @@
-const { getFirestore } = require('../../../lib/firebase');
+const { db } = require('../../lib/firebase');
 const { createModuleLogger } = require('../../lib/logger');
-const { generateCursor, parseCursor } = require('../../lib/ranking');
+const { encodeCursor, decodeCursor } = require('../../lib/pagination');
+const { caches } = require('../../lib/cache');
 const votesService = require('../votes/service');
 const postsService = require('../posts/service');
 
-const db = getFirestore();
+
 const logger = createModuleLogger();
 
 /**
@@ -23,6 +24,7 @@ const logger = createModuleLogger();
  */
 async function createComment(commentData, postId, userId, userNickname) {
   try {
+    // Note: do not use undefined variables in create path; caching is applied only in list operations.
     // Check if post exists
     const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
@@ -84,6 +86,9 @@ async function createComment(commentData, postId, userId, userNickname) {
       authorId: userId,
       depth,
     });
+
+    // Invalidate related caches
+    caches.comments.clear();
 
     return comment;
   } catch (error) {
@@ -172,6 +177,8 @@ async function updateComment(commentId, updateData, userId) {
       updatedFields: Object.keys(updateData),
     });
 
+    // Invalidate caches for comment lists for this post
+    caches.comments.deleteByPrefix(`postComments:${comment.postId}:`);
     return { id: commentId, ...comment, ...updatePayload };
   } catch (error) {
     logger.error('Failed to update comment', {
@@ -185,11 +192,11 @@ async function updateComment(commentId, updateData, userId) {
 }
 
 /**
- * Soft delete comment
+ * Delete comment and all its replies (cascade delete)
  *
  * @param {string} commentId - Comment ID
  * @param {string} userId - User ID performing the delete
- * @returns {boolean} Success status
+ * @returns {Object} Deletion result
  */
 async function deleteComment(commentId, userId) {
   try {
@@ -204,39 +211,109 @@ async function deleteComment(commentId, userId) {
     const comment = commentDoc.data();
 
     // Check permissions (author or community mod/owner)
-    const communityDoc = await db.collection('communities').doc(comment.communityId).get();
-    if (!communityDoc.exists) {
-      throw new Error('Community not found');
-    }
+    let canDelete = comment.authorId === userId; // Author can always delete their own comment
+    
+    // If comment belongs to a community, check community permissions
+    if (comment.communityId) {
+      const communityDoc = await db.collection('communities').doc(comment.communityId).get();
+      if (!communityDoc.exists) {
+        throw new Error('Community not found');
+      }
 
-    const community = communityDoc.data();
-    const canDelete =
-      comment.authorId === userId ||
-      community.ownerId === userId ||
-      community.modIds.includes(userId);
+      const community = communityDoc.data();
+      canDelete = canDelete ||
+        community.ownerId === userId ||
+        (community.modIds && community.modIds.includes(userId));
+    }
 
     if (!canDelete) {
       throw new Error('Insufficient permissions to delete this comment');
     }
 
-    // Soft delete
+    // Get all replies to this comment (cascade delete)
+    const repliesQuery = db
+      .collection('comments')
+      .where('parentId', '==', commentId)
+      .where('isDeleted', '==', false);
+
+    const repliesSnapshot = await repliesQuery.get();
+    const repliesToDelete = repliesSnapshot.docs.map(doc => doc.id);
+
+    // Recursively delete all replies
+    for (const replyId of repliesToDelete) {
+      await deleteCommentRecursive(replyId, userId);
+    }
+
+    // Soft delete the main comment
     await commentRef.update({
       isDeleted: true,
       body: '[deleted]',
       updatedAt: new Date(),
     });
 
-    // Update post comment count
-    await postsService.updateCommentCount(comment.postId, -1);
+    // Update post comment count (main comment + all replies)
+    const totalDeleted = 1 + repliesToDelete.length;
+    await postsService.updateCommentCount(comment.postId, -totalDeleted);
 
-    logger.info('Comment deleted successfully', {
+    logger.info('Comment and replies deleted successfully', {
       commentId,
       deletedBy: userId,
+      repliesDeleted: repliesToDelete.length,
+      totalDeleted,
     });
 
-    return true;
+    // Invalidate caches for comment lists for this post
+    caches.comments.deleteByPrefix(`postComments:${comment.postId}:`);
+    return { success: true, postId: comment.postId, repliesDeleted: repliesToDelete.length };
   } catch (error) {
     logger.error('Failed to delete comment', {
+      error: error.message,
+      commentId,
+      userId,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Recursively delete comment and all its replies
+ * This is a helper function for cascade deletion
+ *
+ * @param {string} commentId - Comment ID
+ * @param {string} userId - User ID performing the delete
+ */
+async function deleteCommentRecursive(commentId, userId) {
+  try {
+    const commentRef = db.collection('comments').doc(commentId);
+
+    // Get all replies to this comment
+    const repliesQuery = db
+      .collection('comments')
+      .where('parentId', '==', commentId)
+      .where('isDeleted', '==', false);
+
+    const repliesSnapshot = await repliesQuery.get();
+    const repliesToDelete = repliesSnapshot.docs.map(doc => doc.id);
+
+    // Recursively delete all replies first
+    for (const replyId of repliesToDelete) {
+      await deleteCommentRecursive(replyId, userId);
+    }
+
+    // Soft delete this comment
+    await commentRef.update({
+      isDeleted: true,
+      body: '[deleted]',
+      updatedAt: new Date(),
+    });
+
+    logger.info('Comment deleted recursively', {
+      commentId,
+      deletedBy: userId,
+      repliesDeleted: repliesToDelete.length,
+    });
+  } catch (error) {
+    logger.error('Failed to delete comment recursively', {
       error: error.message,
       commentId,
       userId,
@@ -256,67 +333,81 @@ async function getPostComments(postId, options = {}) {
   try {
     const { sort = 'top', pageSize = 20, cursor = null } = options;
 
+    // Generate cache key
+    const cacheKey = `postComments:${postId}:${sort}:${pageSize}:${cursor || 'null'}`;
+
+    // Check cache first
+    const cached = caches.comments.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     // Check if post exists
     const postDoc = await db.collection('posts').doc(postId).get();
     if (!postDoc.exists) {
       throw new Error('Post not found');
     }
 
-    // Build query
+    // Build query - simplified to avoid index requirements
     let query = db
       .collection('comments')
-      .where('postId', '==', postId)
-      .where('isDeleted', '==', false);
+      .where('postId', '==', postId);
 
-    switch (sort) {
-      case 'top':
-        query = query.orderBy('score', 'desc');
-        break;
-      case 'new':
-        query = query.orderBy('createdAt', 'desc');
-        break;
-      case 'old':
-        query = query.orderBy('createdAt', 'asc');
-        break;
-      default:
-        query = query.orderBy('createdAt', 'desc');
-    }
-
-    // Apply pagination
-    if (cursor) {
-      const parsedCursor = parseCursor(cursor);
-      if (parsedCursor && parsedCursor.sortBy === sort) {
-        // TODO: Implement cursor-based pagination
-      }
-    }
-
-    query = query.limit(pageSize);
+    // For now, we'll fetch all comments and filter/sort in memory
+    // This avoids the need for complex Firestore composite indexes
+    // TODO: Add proper Firestore indexes for better performance
 
     const snapshot = await query.get();
-    const comments = [];
+    let comments = [];
 
     snapshot.forEach(doc => {
-      comments.push({
+      const comment = {
         id: doc.id,
         ...doc.data(),
-      });
+      };
+      
+      // Filter out deleted comments
+      if (!comment.isDeleted) {
+        comments.push(comment);
+      }
     });
+
+    // Sort in memory
+    switch (sort) {
+      case 'top':
+        comments.sort((a, b) => (b.score || 0) - (a.score || 0));
+        break;
+      case 'new':
+        comments.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        break;
+      case 'old':
+        comments.sort((a, b) => a.createdAt.toMillis() - b.createdAt.toMillis());
+        break;
+      default:
+        comments.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    }
+
+    // Apply pagination in memory
+    const startIndex = cursor ? parseInt(cursor) || 0 : 0;
+    const endIndex = startIndex + pageSize;
+    const paginatedComments = comments.slice(startIndex, endIndex);
 
     // Generate next cursor
     let nextCursor = null;
-    if (comments.length === pageSize) {
-      const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      nextCursor = generateCursor(lastDoc.data(), sort);
+    if (endIndex < comments.length) {
+      nextCursor = (startIndex + pageSize).toString();
     }
 
-    return {
-      comments,
+    const result = {
+      comments: paginatedComments,
       pagination: {
         pageSize,
-        hasMore: comments.length === pageSize,
+        hasMore: endIndex < comments.length,
         nextCursor,
       },
     };
+    caches.comments.set(cacheKey, result);
+    return result;
   } catch (error) {
     logger.error('Failed to get post comments', {
       error: error.message,
@@ -443,6 +534,7 @@ async function getCommentStats(commentId) {
     throw error;
   }
 }
+
 
 module.exports = {
   createComment,

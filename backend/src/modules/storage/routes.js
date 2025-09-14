@@ -153,4 +153,24 @@ router.get('/list', authenticateToken, listFilesValidation, validate, listFiles)
 // Chat storage signing
 router.post('/chat/sign', authenticateToken, generateChatUploadUrl);
 
+// Unified signing endpoint: supports generic upload/download and chat media via "mode"
+// POST /api/v1/storage/sign { mode: 'upload'|'download'|'chat', ... }
+router.post('/sign', authenticateToken, async (req, res) => {
+  try {
+    const mode = req.body?.mode || 'upload';
+    if (mode === 'upload') {
+      return generateUploadUrl(req, res);
+    }
+    if (mode === 'download') {
+      return generateDownloadUrl(req, res);
+    }
+    if (mode === 'chat') {
+      return generateChatUploadUrl(req, res);
+    }
+    return res.status(400).json({ ok: false, error: 'Invalid mode', code: 'INVALID_MODE' });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'Signing failed', code: 'SIGN_ERROR' });
+  }
+});
+
 module.exports = router;

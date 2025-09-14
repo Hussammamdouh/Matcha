@@ -9,6 +9,16 @@ const { createRequestLogger } = require('../lib/logger');
  */
 async function authenticateToken(req, res, next) {
   try {
+    // Test bypass to simplify automated tests (disabled in production)
+    if (process.env.NODE_ENV === 'test' && process.env.TEST_BYPASS_AUTH === 'true') {
+      const testUid = req.headers['x-test-user-id'];
+      const testRole = req.headers['x-test-role'] || 'user';
+      if (testUid) {
+        req.user = { uid: testUid, email: `${testUid}@test.local`, emailVerified: true, customClaims: { role: testRole } };
+        return next();
+      }
+    }
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
@@ -205,6 +215,16 @@ function requireVerification(requiredStatuses) {
  */
 async function optionalAuth(req, res, next) {
   const authHeader = req.headers.authorization;
+
+  // Test bypass
+  if (process.env.NODE_ENV === 'test' && process.env.TEST_BYPASS_AUTH === 'true') {
+    const testUid = req.headers['x-test-user-id'];
+    const testRole = req.headers['x-test-role'] || 'user';
+    if (testUid) {
+      req.user = { uid: testUid, email: `${testUid}@test.local`, emailVerified: true, customClaims: { role: testRole } };
+      return next();
+    }
+  }
 
   if (!authHeader) {
     // No token provided, continue without authentication

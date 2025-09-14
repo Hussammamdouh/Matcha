@@ -36,12 +36,18 @@ const router = express.Router();
  *         media:
  *           type: object
  *           properties:
- *             url: { type: 'string' },
- *             mime: { type: 'string' },
- *             size: { type: 'number' },
- *             width: { type: 'number' },
- *             height: { type: 'number' },
- *             durationMs: { type: 'number' }
+ *             url:
+ *               type: string
+ *             mime:
+ *               type: string
+ *             size:
+ *               type: number
+ *             width:
+ *               type: number
+ *             height:
+ *               type: number
+ *             durationMs:
+ *               type: number
  *           description: Media information (required for media messages)
  *         replyToMessageId:
  *           type: string

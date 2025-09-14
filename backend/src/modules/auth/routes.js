@@ -8,6 +8,7 @@ const {
 } = require('../../middlewares/rateLimit');
 const { asyncHandler } = require('../../middlewares/error');
 const authController = require('./controller');
+const selfieController = require('./selfie.controller');
 const { loginWithEmailPassword } = require('./service');
 
 const router = express.Router();
@@ -126,6 +127,14 @@ router.post(
       .withMessage('Nickname must be 3-20 characters, alphanumeric, underscore, or dash only'),
   ],
   asyncHandler(authController.registerWithEmail)
+);
+
+// Selfie upload + AI inference -> decision
+router.post(
+  '/register/selfie',
+  authRateLimiter,
+  [body('userId').isString().notEmpty(), body('imageUrl').isURL()],
+  asyncHandler(selfieController.processSelfie)
 );
 
 /**

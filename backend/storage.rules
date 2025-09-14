@@ -44,11 +44,13 @@ service firebase.storage {
     match /communities/{communityId}/images/{fileName} {
       allow read: if true; // Public read access
       allow write: if isAuthenticated() && 
-                    firestore.get(/databases/(default)/documents/communities/$(communityId)).data.modIds[request.auth.uid] == true &&
+                    (request.auth.uid == firestore.get(/databases/(default)/documents/communities/$(communityId)).data.ownerId ||
+                     request.auth.uid in firestore.get(/databases/(default)/documents/communities/$(communityId)).data.modIds) &&
                     request.resource.size < 10 * 1024 * 1024 && // 10MB max
                     request.resource.contentType.matches('image/.*');
       allow delete: if isAuthenticated() && 
-                    firestore.get(/databases/(default)/documents/communities/$(communityId)).data.modIds[request.auth.uid] == true;
+                    (request.auth.uid == firestore.get(/databases/(default)/documents/communities/$(communityId)).data.ownerId ||
+                     request.auth.uid in firestore.get(/databases/(default)/documents/communities/$(communityId)).data.modIds);
     }
     
     // Post media - public read, post author can write
@@ -85,25 +87,25 @@ service firebase.storage {
     // Chat media - conversation participants only
     match /chat/conversations/{conversationId}/media/{fileName} {
       allow read: if isAuthenticated() && 
-                   firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds[request.auth.uid] == true;
+                   request.auth.uid in firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds;
       allow write: if isActiveUser() && 
-                    firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds[request.auth.uid] == true &&
+                    request.auth.uid in firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds &&
                     request.resource.size < 10 * 1024 * 1024 && // 10MB max
                     request.resource.contentType.matches('(image|video|audio)/.*');
       allow delete: if isAuthenticated() && 
-                    firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds[request.auth.uid] == true;
+                    request.auth.uid in firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds;
     }
     
     // Chat message attachments - conversation participants only
     match /chat/conversations/{conversationId}/messages/{messageId}/attachments/{fileName} {
       allow read: if isAuthenticated() && 
-                   firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds[request.auth.uid] == true;
+                   request.auth.uid in firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds;
       allow write: if isActiveUser() && 
-                    firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds[request.auth.uid] == true &&
+                    request.auth.uid in firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds &&
                     request.resource.size < 5 * 1024 * 1024 && // 5MB max
                     request.resource.contentType.matches('(image|video|audio|application)/.*');
       allow delete: if isAuthenticated() && 
-                    firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds[request.auth.uid] == true;
+                    request.auth.uid in firestore.get(/databases/(default)/documents/chat/conversations/$(conversationId)).data.participantIds;
     }
     
     // System files - server only

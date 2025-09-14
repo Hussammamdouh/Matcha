@@ -6,6 +6,8 @@ const moderationService = require('./moderation.service');
 const usersService = require('./users.service');
 const featuresService = require('./features.service');
 const exportsService = require('./exports.service');
+const { getFirestore } = require('../../lib/firebase');
+const { sendEmail } = require('../../lib/mail');
 
 const logger = createModuleLogger('admin:controller');
 
@@ -1622,6 +1624,110 @@ async function getAuditLogs(req, res) {
   }
 }
 
+// List pending gender reviews
+async function listPendingGenderReviews(req, res) {
+  try {
+    const db = getFirestore();
+    const snapshot = await db
+      .collection('admin_reviews')
+      .where('type', '==', 'gender_verification')
+      .where('status', '==', 'pending')
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+    const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ ok: true, data: items, error: null, meta: { count: items.length, requestId: req.id } });
+  } catch (error) {
+    logger.error('Failed to list pending gender reviews', { error: error.message });
+    res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: 'Failed to list reviews' } });
+  }
+}
+
+// Approve review => set user to approved, send email verification link if not verified
+async function approveGenderReview(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getFirestore();
+    const docRef = db.collection('admin_reviews').doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'Review not found' } });
+    const review = doc.data();
+    const userId = review.userId;
+
+    await db.collection('users').doc(userId).update({ genderVerificationStatus: 'approved', updatedAt: new Date() });
+    await docRef.update({ status: 'approved', reviewedAt: new Date() });
+
+    // Send email verification link if user has email
+    const userDoc = await db.collection('users').doc(userId).get();
+    const email = userDoc.data()?.email;
+    if (email) {
+      try {
+        const { getAuth } = require('../../lib/firebase');
+        const auth = getAuth();
+        const link = await auth.generateEmailVerificationLink(email, { url: `${process.env.FRONTEND_URL}/verify-email` });
+        await sendEmail({ to: email, template: 'email-verification', data: { nickname: userDoc.data()?.nickname, verificationLink: link } });
+      } catch (_) {}
+    }
+
+    res.json({ ok: true, data: { reviewId: id, userId, status: 'approved' }, error: null });
+  } catch (error) {
+    logger.error('Failed to approve gender review', { error: error.message });
+    res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: 'Failed to approve review' } });
+  }
+}
+
+// Reject review => mark user rejected and create IT ticket
+async function rejectGenderReview(req, res) {
+  try {
+    const { id } = req.params;
+    const db = getFirestore();
+    const docRef = db.collection('admin_reviews').doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'Review not found' } });
+    const review = doc.data();
+    const userId = review.userId;
+
+    await db.collection('users').doc(userId).update({ genderVerificationStatus: 'rejected', updatedAt: new Date() });
+    await docRef.update({ status: 'rejected', reviewedAt: new Date() });
+    await db.collection('it_tickets').add({ type: 'registration_review', userId, reason: 'admin_rejected', createdAt: new Date(), status: 'open' });
+
+    res.json({ ok: true, data: { reviewId: id, userId, status: 'rejected' }, error: null });
+  } catch (error) {
+    logger.error('Failed to reject gender review', { error: error.message });
+    res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: 'Failed to reject review' } });
+  }
+}
+
+/**
+ * Update retention settings (runtime adjustable)
+ * @param {Object} req
+ * @param {Object} res
+ */
+async function updateRetentionSettings(req, res) {
+  try {
+    const adminId = req.user.uid;
+    if (!canPerformAction(adminId, 'features.manage', req.user.customClaims)) {
+      return res.status(403).json({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'Insufficient permissions' },
+      });
+    }
+
+    const { menOriginalRetentionDays } = req.body;
+    const db = getFirestore();
+    await db.collection('system').doc('settings').set({
+      menOriginalRetentionDays,
+      updatedAt: new Date(),
+      updatedBy: adminId,
+    }, { merge: true });
+
+    res.json({ ok: true, data: { menOriginalRetentionDays }, error: null, meta: { requestId: req.id } });
+  } catch (error) {
+    logger.error('Failed to update retention settings', { error: error.message });
+    res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: 'Failed to update settings' } });
+  }
+}
+
 module.exports = {
   // Reports
   getUnifiedReports,
@@ -1651,4 +1757,9 @@ module.exports = {
   
   // Audits
   getAuditLogs,
+  listPendingGenderReviews,
+  approveGenderReview,
+  rejectGenderReview,
+  updateRetentionSettings,
+  // System settings (added below)
 };

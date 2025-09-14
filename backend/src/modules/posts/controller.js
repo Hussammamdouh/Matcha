@@ -15,12 +15,57 @@ const logger = createModuleLogger();
  */
 async function createPost(req, res) {
   try {
+    logger.info('=== POST CREATION START ===', {
+      requestId: req.id,
+      timestamp: new Date().toISOString(),
+      userAgent: req.get('User-Agent'),
+      ip: req.ip
+    });
+
     const { uid } = req.user;
+    logger.info('User authentication check', { uid, hasUser: !!req.user });
+
+    if (!uid) {
+      logger.error('No user ID found in request');
+      return res.status(401).json({
+        ok: false,
+        error: { code: 'UNAUTHORIZED', message: 'User not authenticated' }
+      });
+    }
+
     const postData = req.body;
+    logger.info('Request body received', { 
+      postData, 
+      bodyKeys: Object.keys(postData),
+      contentType: req.get('Content-Type')
+    });
+
+    // Validate required fields (allow public posts with no communityId)
+    if (!postData.title || !postData.body) {
+      logger.error('Missing required fields', { 
+        hasTitle: !!postData.title, 
+        hasBody: !!postData.body, 
+        hasCommunityId: !!postData.communityId 
+      });
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'MISSING_FIELDS', message: 'Title and body are required' }
+      });
+    }
 
     // Get user nickname from user document
-    const userDoc = await req.app.locals.db.collection('users').doc(uid).get();
+    logger.info('Fetching user document', { uid, collection: 'users' });
+    const { db } = require('../../../lib/firebase');
+    const userDoc = await db.collection('users').doc(uid).get();
+    
+    logger.info('User document fetch result', { 
+      exists: userDoc.exists, 
+      hasData: !!userDoc.data(),
+      userId: uid
+    });
+
     if (!userDoc.exists) {
+      logger.error('User not found in database', { uid });
       return res.status(404).json({
         ok: false,
         error: {
@@ -32,14 +77,26 @@ async function createPost(req, res) {
 
     const userData = userDoc.data();
     const userNickname = userData.nickname || 'Anonymous';
+    
+    logger.info('User data retrieved', { 
+      nickname: userNickname, 
+      userDataKeys: Object.keys(userData),
+      hasNickname: !!userData.nickname
+    });
 
-    logger.info('Creating post', {
+    logger.info('Calling posts service', {
       userId: uid,
-      communityId: postData.communityId,
+      communityId: postData.communityId || null,
       hasMedia: !!(postData.mediaDescriptors && postData.mediaDescriptors.length),
+      postDataKeys: Object.keys(postData)
     });
 
     const post = await postsService.createPost(postData, uid, userNickname);
+
+    logger.info('Post service completed successfully', { 
+      postId: post.id,
+      postKeys: Object.keys(post)
+    });
 
     res.status(201).json({
       ok: true,
@@ -48,10 +105,21 @@ async function createPost(req, res) {
         message: 'Post created successfully',
       },
     });
+
+    logger.info('=== POST CREATION SUCCESS ===', {
+      postId: post.id,
+      userId: uid,
+      communityId: postData.communityId || null
+    });
+
   } catch (error) {
-    logger.error('Failed to create post', {
+    logger.error('=== POST CREATION FAILED ===', {
       error: error.message,
+      errorStack: error.stack,
+      errorName: error.name,
       userId: req.user?.uid,
+      requestId: req.id,
+      timestamp: new Date().toISOString()
     });
 
     if (error.message.includes('Community not found')) {
@@ -138,6 +206,22 @@ async function getPost(req, res) {
         message: 'Failed to get post',
       },
     });
+  }
+}
+
+/**
+ * List posts (optionally filtered)
+ * GET /api/v1/posts
+ */
+async function listPosts(req, res) {
+  try {
+    const { authorId, communityId, visibility, pageSize, cursor } = req.query;
+    const result = await postsService.listPosts({ authorId, communityId, visibility, pageSize: pageSize ? parseInt(pageSize, 10) : 20, cursor });
+    res.json({ ok: true, data: result.posts, meta: { pagination: result.pagination } });
+  } catch (error) {
+    const logger = require('../../lib/logger').createRequestLogger(req.id);
+    logger.error('Failed to list posts', { error: error.message, stack: error.stack });
+    res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to list posts' } });
   }
 }
 
@@ -573,6 +657,7 @@ async function getSavedPosts(req, res) {
 module.exports = {
   createPost,
   getPost,
+  listPosts,
   updatePost,
   deletePost,
   voteOnPost,

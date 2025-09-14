@@ -9,26 +9,11 @@ const { logRequest } = require('./lib/logger');
 const requestIdMiddleware = require('./middlewares/requestId');
 const { errorHandler, notFoundHandler } = require('./middlewares/error');
 const { generalRateLimiter } = require('./middlewares/rateLimit');
+const ChatWebSocketGateway = require('./modules/chat/websocket');
 
-// Import route modules
-const authRoutes = require('./modules/auth/routes');
-const userRoutes = require('./modules/users/routes');
-const deviceRoutes = require('./modules/devices/routes');
-const sessionRoutes = require('./modules/sessions/routes');
+// Route modules will be imported after Firebase initialization
 
-const adminRoutes = require('./modules/admin/routes');
-const auditRoutes = require('./modules/audit/routes');
-const webhookRoutes = require('./webhooks/routes');
-const jobRoutes = require('./jobs/routes');
-
-// Feed-related route modules will be imported after Firebase initialization
-
-// Import health check routes
-const healthRoutes = require('./routes/health');
-
-// Import OpenAPI documentation
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./docs/swagger');
+// Swagger disabled per requirements
 
 const logger = createRequestLogger();
 
@@ -39,13 +24,34 @@ function createApp() {
   const app = express();
 
   // Initialize Firebase Admin SDK
+  logger.info('=== FIREBASE INITIALIZATION START ===', {
+    timestamp: new Date().toISOString(),
+    config: {
+      hasFirebaseConfig: !!config.firebase,
+      projectId: config.firebase?.projectId,
+      hasCredentials: !!config.firebase?.credentialsPath,
+      env: config.env
+    }
+  });
+
   try {
     initializeFirebase();
-    logger.info('Firebase Admin SDK initialized successfully');
+    logger.info('=== FIREBASE INITIALIZATION SUCCESS ===', {
+      timestamp: new Date().toISOString(),
+      projectId: config.firebase?.projectId
+    });
   } catch (error) {
-    logger.error('Failed to initialize Firebase Admin SDK', {
+    logger.error('=== FIREBASE INITIALIZATION FAILED ===', {
       error: error.message,
-      stack: error.stack,
+      errorStack: error.stack,
+      errorName: error.name,
+      timestamp: new Date().toISOString(),
+      config: {
+        hasFirebaseConfig: !!config.firebase,
+        projectId: config.firebase?.projectId,
+        hasCredentials: !!config.firebase?.credentialsPath,
+        env: config.env
+      }
     });
     throw error;
   }
@@ -82,7 +88,7 @@ function createApp() {
   // CORS configuration
   app.use(
     cors({
-      origin: config.cors.origins,
+      origin: true,
       credentials: config.cors.credentials,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: [
@@ -113,27 +119,17 @@ function createApp() {
   app.use(generalRateLimiter);
 
   // Health check endpoints (no authentication required)
-  app.use('/healthz', healthRoutes);
-  app.use('/readyz', healthRoutes);
+  const healthRoutes = require('./routes/health');
+  // Mount at root so router paths '/healthz', '/readyz', etc. resolve correctly
+  app.use('/', healthRoutes);
 
-  // API documentation (basic auth in production)
-  if (config.isDevelopment) {
-    app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-    logger.info('Swagger UI available at /docs');
-  } else {
-    // TODO: Add basic auth for production documentation
-    app.use('/docs', (req, res) => {
-      res.status(401).json({
-        ok: false,
-        error: {
-          code: 'AUTH_REQUIRED',
-          message: 'Documentation access requires authentication in production',
-        },
-      });
-    });
-  }
+  // API documentation disabled
 
   // API routes with versioning
+  const authRoutes = require('./modules/auth/routes');
+  const userRoutes = require('./modules/users/routes');
+  const deviceRoutes = require('./modules/devices/routes');
+  const sessionRoutes = require('./modules/sessions/routes');
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/me', userRoutes);
   app.use('/api/v1/me/devices', deviceRoutes);
@@ -146,17 +142,19 @@ function createApp() {
   const reportRoutes = require('./modules/reports/routes');
   const searchRoutes = require('./modules/search/routes');
   const storageRoutes = require('./modules/storage/routes');
+  const menReviewsRoutes = require('./modules/menReviews/routes');
 
   // Chat routes (imported after Firebase initialization)
   const chatRoutes = require('./modules/chat/routes');
 
   app.use('/api/v1/communities', communityRoutes);
   app.use('/api/v1/posts', postRoutes);
-  app.use('/api/v1/comments', commentRoutes);
+  app.use('/api/v1/posts', commentRoutes); // Comments are now post-specific
   app.use('/api/v1/reports', reportRoutes);
   app.use('/api/v1/search', searchRoutes);
   app.use('/api/v1/storage', storageRoutes);
   app.use('/api/v1/chat', chatRoutes);
+  app.use('/api/v1/reviews', menReviewsRoutes);
 
   // Feed-specific routes
   app.use(
@@ -180,6 +178,10 @@ function createApp() {
   );
 
   // KYC and admin routes (feature-flagged)
+  const adminRoutes = require('./modules/admin/routes');
+  const webhookRoutes = require('./webhooks/routes');
+  const auditRoutes = require('./modules/audit/routes');
+  const jobRoutes = require('./jobs/routes');
   if (features.kyc) {
     app.use('/api/v1/admin', adminRoutes);
     app.use('/api/v1/webhooks', webhookRoutes);
@@ -206,14 +208,21 @@ function startServer() {
     validateConfig();
 
     const app = createApp();
-    const server = app.listen(config.port, () => {
+    const server = app.listen(config.port, '0.0.0.0', () => {
       logger.info('Matcha backend server started successfully', {
         port: config.port,
         environment: config.env,
         nodeVersion: process.version,
         firebaseProject: config.firebase.projectId,
+        host: '0.0.0.0',
       });
     });
+
+    // Initialize WebSocket gateway
+    const wsGateway = new ChatWebSocketGateway(server);
+    
+    // Make WebSocket gateway globally available
+    global.wsGateway = wsGateway;
 
     // Graceful shutdown handling
     const gracefulShutdown = signal => {
@@ -260,6 +269,10 @@ function startServer() {
       error: error.message,
       stack: error.stack,
     });
+    // Ensure visibility in console even if logger target is not console
+    // and provide full error for quick diagnosis during development
+    // eslint-disable-next-line no-console
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }

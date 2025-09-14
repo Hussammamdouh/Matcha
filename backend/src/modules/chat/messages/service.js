@@ -1,4 +1,4 @@
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../../lib/logger');
 const { canSendMessage, canEditMessage, canDeleteMessage } = require('../../../lib/chat/permissions');
 const { sanitizeChatText, buildMessagePreview } = require('../../../lib/chat/sanitize');
@@ -6,7 +6,7 @@ const { buildMessageSummary } = require('../../../lib/chat/preview');
 const { generateCursor, parseCursor } = require('../../../lib/ranking');
 const reactionsService = require('../reactions/service');
 
-const db = getFirestore();
+let db;
 const logger = createModuleLogger('chat:messages:service');
 
 /**
@@ -20,6 +20,7 @@ const logger = createModuleLogger('chat:messages:service');
  * @returns {Promise<Object>} Created message
  */
 async function sendMessage(data) {
+  db = db || getFirestore();
   const { conversationId, authorId, type, text, media } = data;
   
   try {
@@ -127,6 +128,7 @@ async function sendMessage(data) {
  * @returns {Promise<Object>} Messages list with pagination
  */
 async function getMessages(conversationId, userId, options = {}) {
+  db = db || getFirestore();
   const { cursor, pageSize = 50, order = 'desc' } = options;
   
   try {
@@ -235,6 +237,7 @@ async function getMessages(conversationId, userId, options = {}) {
  * @returns {Promise<Object>} Updated message
  */
 async function editMessage(messageId, userId, newText) {
+  db = db || getFirestore();
   try {
     // Check if user can edit message
     const permissionCheck = await canEditMessage(userId, messageId);
@@ -288,6 +291,7 @@ async function editMessage(messageId, userId, newText) {
  * @returns {Promise<boolean>} Success status
  */
 async function deleteMessage(messageId, userId) {
+  db = db || getFirestore();
   try {
     // Check if user can delete message
     const permissionCheck = await canDeleteMessage(userId, messageId);

@@ -1,7 +1,7 @@
-const { getFirestore } = require('../../../lib/firebase');
+const { db } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../lib/logger');
 
-const db = getFirestore();
+
 const logger = createModuleLogger();
 
 /**
@@ -138,9 +138,17 @@ async function getCommunity(communityId, userId = null) {
  * @param {string} options.cursor - Pagination cursor
  * @returns {Object} Paginated communities list
  */
+const { encodeCursor, decodeCursor } = require('../../lib/pagination');
+
+const { caches } = require('../../lib/cache');
+
 async function listCommunities(options = {}) {
   try {
     const { q = '', category = '', sort = 'trending', pageSize = 20, cursor = null } = options;
+
+    const cacheKey = `communities:${q}:${category}:${sort}:${pageSize}:${cursor || 'start'}`;
+    const cached = caches.communities.get(cacheKey);
+    if (cached) return cached;
 
     let query = db.collection('communities');
 
@@ -171,10 +179,19 @@ async function listCommunities(options = {}) {
         query = query.orderBy('createdAt', 'desc');
     }
 
-    // Apply pagination
+    // Apply pagination (cursor based on createdAt,id)
     if (cursor) {
-      // TODO: Implement cursor-based pagination
-      // For now, use offset
+      const decoded = decodeCursor(cursor);
+      if (decoded) {
+        // Firestore needs the field to orderBy and a doc snapshot or explicit values for startAfter
+        // Since we order by one field, we can fetch the reference doc
+        try {
+          const docSnap = await db.collection('communities').doc(decoded.id).get();
+          if (docSnap.exists) {
+            query = query.startAfter(docSnap);
+          }
+        } catch (_) {}
+      }
     }
 
     query = query.limit(pageSize);
@@ -193,16 +210,10 @@ async function listCommunities(options = {}) {
     let nextCursor = null;
     if (communities.length === pageSize) {
       const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      nextCursor = Buffer.from(
-        JSON.stringify({
-          id: lastDoc.id,
-          sort,
-          timestamp: Date.now(),
-        })
-      ).toString('base64');
+      nextCursor = encodeCursor({ id: lastDoc.id, createdAt: lastDoc.get('createdAt') });
     }
 
-    return {
+    const result = {
       communities,
       pagination: {
         pageSize,
@@ -210,6 +221,8 @@ async function listCommunities(options = {}) {
         nextCursor,
       },
     };
+    caches.communities.set(cacheKey, result);
+    return result;
   } catch (error) {
     logger.error('Failed to list communities', {
       error: error.message,
@@ -238,7 +251,7 @@ async function updateCommunity(communityId, updateData, userId) {
     }
 
     const community = communityDoc.data();
-    if (community.ownerId !== userId && !community.modIds.includes(userId)) {
+    if (community.ownerId !== userId && !(community.modIds || []).includes(userId)) {
       throw new Error('Insufficient permissions to update community');
     }
 
@@ -247,12 +260,10 @@ async function updateCommunity(communityId, updateData, userId) {
       const nameQuery = await db
         .collection('communities')
         .where('name', '==', updateData.name)
+        .limit(1)
         .get();
-      
-      // Filter out current community in memory
-      const duplicateName = nameQuery.docs.find(doc => doc.id !== communityId);
 
-      if (duplicateName) {
+      if (!nameQuery.empty && nameQuery.docs[0].id !== communityId) {
         throw new Error('Community name already exists');
       }
     }
@@ -261,11 +272,10 @@ async function updateCommunity(communityId, updateData, userId) {
       const slugQuery = await db
         .collection('communities')
         .where('slug', '==', updateData.slug)
-        .where('__name__', '!=', communityId)
         .limit(1)
         .get();
 
-      if (!slugQuery.empty) {
+      if (!slugQuery.empty && slugQuery.docs[0].id !== communityId) {
         throw new Error('Community slug already exists');
       }
     }
@@ -404,7 +414,7 @@ async function leaveCommunity(communityId, userId) {
     await membershipDoc.ref.delete();
 
     // Remove from moderators if applicable
-    if (community.modIds.includes(userId)) {
+    if ((community.modIds || []).includes(userId)) {
       const newModIds = community.modIds.filter(id => id !== userId);
       await communityRef.update({
         modIds: newModIds,

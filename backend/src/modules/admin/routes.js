@@ -800,6 +800,66 @@ router.post(
   asyncHandler(adminController.unshadowbanUser)
 );
 
+// Unified admin user action endpoint
+// POST /api/v1/admin/users/:uid/action { action: 'ban'|'unban'|'shadowban'|'unshadowban'|'logout-all', reason?: '...', until?: '...' }
+router.post(
+  '/users/:uid/action',
+  authenticateToken,
+  requireModerator(),
+  adminIdempotency,
+  async (req, res) => {
+    try {
+      const { uid } = req.params;
+      const { action, reason, until } = req.body;
+      const adminId = req.user.uid;
+
+      if (!action) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'MISSING_ACTION', message: 'Action is required' }
+        });
+      }
+
+      const validActions = ['ban', 'unban', 'shadowban', 'unshadowban', 'logout-all'];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({
+          ok: false,
+          error: { 
+            code: 'INVALID_ACTION', 
+            message: `Action must be one of: ${validActions.join(', ')}` 
+          }
+        });
+      }
+
+      // Route to appropriate controller based on action
+      switch (action) {
+        case 'ban':
+          req.body = { reason, until };
+          return adminController.banUser(req, res);
+        case 'unban':
+          return adminController.unbanUser(req, res);
+        case 'shadowban':
+          req.body = { reason };
+          return adminController.shadowbanUser(req, res);
+        case 'unshadowban':
+          return adminController.unshadowbanUser(req, res);
+        case 'logout-all':
+          return adminController.logoutAllUserSessions(req, res);
+        default:
+          return res.status(400).json({
+            ok: false,
+            error: { code: 'INVALID_ACTION', message: 'Unknown action' }
+          });
+      }
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: { code: 'USER_ACTION_FAILED', message: 'Failed to perform user action' }
+      });
+    }
+  }
+);
+
 /**
  * @swagger
  * /api/v1/admin/users/{uid}/logout-all:
@@ -1008,6 +1068,44 @@ router.patch(
   adminValidators.updateFeaturesValidation,
   adminValidators.validate,
   asyncHandler(adminController.updateFeatures)
+);
+
+// Runtime retention settings
+router.patch(
+  '/system/retention',
+  authenticateToken,
+  requireAdmin(),
+  adminValidators.updateRetentionValidation,
+  adminValidators.validate,
+  asyncHandler(adminController.updateRetentionSettings)
+);
+
+// Admin review of pending gender checks
+router.get(
+  '/reviews/gender',
+  authenticateToken,
+  requireModerator(),
+  adminValidators.getUnifiedReportsValidation, // reuse pagination/cursor validation baseline
+  adminValidators.validate,
+  asyncHandler(adminController.listPendingGenderReviews)
+);
+
+router.post(
+  '/reviews/gender/:id/approve',
+  authenticateToken,
+  requireModerator(),
+  adminValidators.claimReportValidation, // reuse path id validation
+  adminValidators.validate,
+  asyncHandler(adminController.approveGenderReview)
+);
+
+router.post(
+  '/reviews/gender/:id/reject',
+  authenticateToken,
+  requireModerator(),
+  adminValidators.claimReportValidation,
+  adminValidators.validate,
+  asyncHandler(adminController.rejectGenderReview)
 );
 
 // ============================================================================

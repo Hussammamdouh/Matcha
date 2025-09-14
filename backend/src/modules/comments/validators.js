@@ -5,7 +5,7 @@ const { sanitizeHtml } = require('../../lib/sanitize');
  * Validation schemas for comment endpoints
  */
 
-// Create comment validation
+// Create comment validation (postId comes from URL params)
 const createCommentValidation = [
   body('body')
     .trim()
@@ -23,7 +23,7 @@ const createCommentValidation = [
 
 // Update comment validation
 const updateCommentValidation = [
-  param('id').isString().trim().notEmpty().withMessage('Comment ID is required'),
+  param('commentId').isString().trim().notEmpty().withMessage('Comment ID is required'),
 
   body('body')
     .trim()
@@ -34,12 +34,12 @@ const updateCommentValidation = [
 
 // Get comment validation
 const getCommentValidation = [
-  param('id').isString().trim().notEmpty().withMessage('Comment ID is required'),
+  param('commentId').isString().trim().notEmpty().withMessage('Comment ID is required'),
 ];
 
 // Vote on comment validation
 const voteCommentValidation = [
-  param('id').isString().trim().notEmpty().withMessage('Comment ID is required'),
+  param('commentId').isString().trim().notEmpty().withMessage('Comment ID is required'),
 
   body('value')
     .isInt({ min: -1, max: 1 })
@@ -62,6 +62,7 @@ const getPostCommentsValidation = [
 
   query('cursor').optional().isString().withMessage('Cursor must be a string'),
 ];
+
 
 /**
  * Centralized validation result handler

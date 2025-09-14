@@ -48,6 +48,7 @@ primary_region = "iad"  # Washington DC - change to your preferred region
     interval = "30s"
     method = "GET"
     path = "/healthz"
+    port = 80
     protocol = "http"
     restart_limit = 0
     timeout = "5s"

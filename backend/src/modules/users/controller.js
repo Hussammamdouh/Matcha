@@ -2,6 +2,8 @@ const { validationResult } = require('express-validator');
 const { getFirestore, revokeRefreshTokens } = require('../../../lib/firebase');
 const { createRequestLogger } = require('../../lib/logger');
 const { createAuditLog } = require('../audit/service');
+const { db } = require('../../../lib/firebase');
+const postsService = require('../posts/service');
 const {
   generateAvatarUploadUrl,
   getAvatarPublicUrl,
@@ -517,6 +519,118 @@ async function confirmAvatarUpload(req, res) {
   }
 }
 
+/**
+ * Get my profile stats and posts
+ * GET /api/v1/me/stats
+ */
+async function getMyStatsAndPosts(req, res) {
+  const logger = createRequestLogger(req.id);
+  const { uid } = req.user;
+  try {
+    // Counts (avoid composite indexes by filtering isDeleted client-side)
+    const [userPostsSnap, followersSnap, followingSnap, likesSnap, savesSnap] = await Promise.all([
+      db.collection('posts').where('authorId', '==', uid).get(),
+      db.collection('follows').where('followedId', '==', uid).get(),
+      db.collection('follows').where('followerId', '==', uid).get(),
+      // Likes mirror top-level collection
+      db.collection('likes').where('userId', '==', uid).get().catch(() => ({ size: 0 })),
+      db.collection('saves').where('userId', '==', uid).get().catch(() => ({ size: 0 })),
+    ]);
+
+    const totalUserPosts = userPostsSnap.docs.filter(d => !d.data().isDeleted).length;
+
+    // Fetch recent posts (limit 20), filter out deleted in memory
+    const recentPostsSnap = await db
+      .collection('posts')
+      .where('authorId', '==', uid)
+      .limit(200)
+      .get();
+
+    const posts = recentPostsSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(p => !p.isDeleted)
+      .sort((a, b) => {
+        const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 20);
+
+    return res.json({
+      ok: true,
+      data: {
+        stats: {
+          posts: totalUserPosts,
+          followers: followersSnap.size,
+          following: followingSnap.size,
+          likes: likesSnap.size || 0,
+          saves: savesSnap.size || 0,
+        },
+        posts,
+      },
+      meta: { requestId: req.id },
+    });
+  } catch (error) {
+    logger.error('Failed to get my stats and posts', {
+      error: error.message,
+      code: error.code,
+      stack: error.stack,
+      uid,
+    });
+    // Ensure visibility during development
+    // eslint-disable-next-line no-console
+    console.error('getMyStatsAndPosts error:', error);
+    const devDetails = process.env.NODE_ENV !== 'production' ? { details: error.message, stack: error.stack } : {};
+    return res.status(500).json({ ok: false, error: { code: 'PROFILE_STATS_FAILED', message: 'Failed to retrieve stats', ...devDetails } });
+  }
+}
+
+/**
+ * Get my liked posts
+ * GET /api/v1/me/likes
+ */
+async function getMyLikedPosts(req, res) {
+  const logger = createRequestLogger(req.id);
+  const { uid } = req.user;
+  const { pageSize = 20 } = req.query;
+  try {
+    // Likes are stored under posts/{postId}/votes/{uid} with value=1
+    // Query across posts isn't trivial; use a votes collection if available, otherwise scan limited
+    const votesSnapshot = await db
+      .collectionGroup('votes')
+      .where('value', '==', 1)
+      .where('uid', '==', uid)
+      .limit(parseInt(pageSize))
+      .get()
+      .catch(() => null);
+
+    let posts = [];
+    if (votesSnapshot && !votesSnapshot.empty) {
+      const postIds = votesSnapshot.docs.map(doc => doc.ref.parent.parent.id);
+      const uniqueIds = Array.from(new Set(postIds));
+      const fetches = uniqueIds.map(id => db.collection('posts').doc(id).get());
+      const docs = await Promise.all(fetches);
+      posts = docs.filter(d => d.exists && !d.data().isDeleted).map(d => ({ id: d.id, ...d.data() }));
+    } else {
+      // Fallback: query a top-level likes collection if exists
+      const likesRef = db.collection('likes');
+      const likes = await likesRef.where('userId', '==', uid).limit(parseInt(pageSize)).get().catch(() => null);
+      if (likes && !likes.empty) {
+        const postIds = likes.docs.map(d => d.data().postId);
+        const uniqueIds = Array.from(new Set(postIds));
+        const fetches = uniqueIds.map(id => db.collection('posts').doc(id).get());
+        const docs = await Promise.all(fetches);
+        posts = docs.filter(d => d.exists && !d.data().isDeleted).map(d => ({ id: d.id, ...d.data() }));
+      }
+    }
+
+    return res.json({ ok: true, data: posts });
+  } catch (error) {
+    logger.error('Failed to get my liked posts', { error: error.message, uid });
+    return res.status(500).json({ ok: false, error: { code: 'LIKES_FETCH_FAILED', message: 'Failed to fetch liked posts' } });
+  }
+}
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -526,4 +640,6 @@ module.exports = {
   deleteAccount,
   generateAvatarUploadUrl: handleAvatarUploadUrl,
   confirmAvatarUpload,
+  getMyStatsAndPosts,
+  getMyLikedPosts,
 };

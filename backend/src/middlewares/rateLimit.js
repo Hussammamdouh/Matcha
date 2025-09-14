@@ -1,31 +1,9 @@
 const rateLimit = require('express-rate-limit');
-const Redis = require('ioredis');
 const { config } = require('../config');
 const logger = require('../lib/logger');
 
-// Initialize Redis client for distributed rate limiting
+// Redis removed; using in-memory store only
 let redisClient = null;
-if (config.redis?.enabled) {
-  try {
-    redisClient = new Redis(config.redis.url, {
-      retryDelayOnFailover: 100,
-      enableReadyCheck: false,
-      maxRetriesPerRequest: null,
-    });
-    
-    redisClient.on('error', (error) => {
-      logger.error('Redis connection error', { error: error.message });
-    });
-    
-    redisClient.on('connect', () => {
-      logger.info('Redis connected for rate limiting');
-    });
-  } catch (error) {
-    logger.warn('Redis not available, falling back to in-memory rate limiting', {
-      error: error.message
-    });
-  }
-}
 
 /**
  * Create a rate limiter with Redis or in-memory storage
@@ -46,6 +24,15 @@ function createRateLimiter(options) {
     },
     standardHeaders: true,
     legacyHeaders: false,
+    // Use a custom key generator that doesn't rely on trust proxy
+    keyGenerator: (req) => {
+      // Use X-Forwarded-For header if available, otherwise use connection remote address
+      const forwarded = req.get('X-Forwarded-For');
+      if (forwarded) {
+        return forwarded.split(',')[0].trim();
+      }
+      return req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
+    },
     handler: (req, res) => {
       logger.warn('Rate limit exceeded', {
         ip: req.ip,
@@ -61,14 +48,7 @@ function createRateLimiter(options) {
 
   const limiterOptions = { ...defaultOptions, ...options };
   
-  // Use Redis if available, otherwise fall back to in-memory
-  if (redisClient && config.redis?.enabled) {
-    limiterOptions.store = new RedisStore({
-      client: redisClient,
-      prefix: 'rate_limit:',
-      ...options.redisOptions
-    });
-  }
+  // Always use in-memory store
 
   return rateLimit(limiterOptions);
 }
@@ -306,26 +286,7 @@ const menReviewDailyQuota = createDailyQuotaLimiter({
  * @returns {Promise<Object>} Rate limit information
  */
 async function getRateLimitInfo(key) {
-  if (!redisClient || !config.redis?.enabled) {
-    return { remaining: 'unknown', resetTime: 'unknown' };
-  }
-
-  try {
-    const current = await redisClient.get(`rate_limit:${key}`);
-    const ttl = await redisClient.ttl(`rate_limit:${key}`);
-    
-    if (!current) {
-      return { remaining: 'unlimited', resetTime: 'unknown' };
-    }
-
-    return {
-      remaining: Math.max(0, parseInt(current)),
-      resetTime: new Date(Date.now() + ttl * 1000)
-    };
-  } catch (error) {
-    logger.error('Failed to get rate limit info', { error: error.message, key });
-    return { remaining: 'unknown', resetTime: 'unknown' };
-  }
+  return { remaining: 'unknown', resetTime: 'unknown' };
 }
 
 /**
@@ -334,18 +295,7 @@ async function getRateLimitInfo(key) {
  * @returns {Promise<boolean>} Success status
  */
 async function resetRateLimit(key) {
-  if (!redisClient || !config.redis?.enabled) {
-    return false;
-  }
-
-  try {
-    await redisClient.del(`rate_limit:${key}`);
-    logger.info('Rate limit reset', { key });
-    return true;
-  } catch (error) {
-    logger.error('Failed to reset rate limit', { error: error.message, key });
-    return false;
-  }
+  return false;
 }
 
 module.exports = {

@@ -102,6 +102,63 @@ function getBucket() {
   return admin.storage().bucket();
 }
 
+// Lightweight proxies for legacy-style access patterns
+// Ensure function methods are bound to their underlying instances
+const db = new Proxy({}, {
+  get: (_target, property) => {
+    logger.info('=== DB PROXY ACCESS ===', {
+      property,
+      timestamp: new Date().toISOString()
+    });
+    try {
+      const instance = getFirestore();
+      // Reduce log noise: debug level only
+      logger.debug('Firestore instance retrieved', { hasInstance: !!instance });
+      const value = instance[property];
+      logger.debug('DB property accessed', { property });
+      if (typeof value === 'function') {
+        logger.debug('Binding function method', { property });
+        return value.bind(instance);
+      }
+      return value;
+    } catch (error) {
+      logger.error('DB proxy access failed', {
+        property,
+        error: error.message,
+        errorStack: error.stack
+      });
+      throw error;
+    }
+  }
+});
+
+const storage = new Proxy({}, {
+  get: (_target, property) => {
+    logger.info('=== STORAGE PROXY ACCESS ===', {
+      property,
+      timestamp: new Date().toISOString()
+    });
+    try {
+      const instance = getStorage();
+      logger.debug('Storage instance retrieved', { hasInstance: !!instance });
+      const value = instance[property];
+      logger.debug('Storage property accessed', { property });
+      if (typeof value === 'function') {
+        logger.debug('Binding function method', { property });
+        return value.bind(instance);
+      }
+      return value;
+    } catch (error) {
+      logger.error('Storage proxy access failed', {
+        property,
+        error: error.message,
+        errorStack: error.stack
+      });
+      throw error;
+    }
+  }
+});
+
 /**
  * Verify Firebase ID token
  * @param {string} idToken - Firebase ID token
@@ -248,6 +305,9 @@ module.exports = {
   getStorage,
   getAuth,
   getBucket,
+  // Proxies for compatibility
+  db,
+  storage,
   verifyIdToken,
   getUserCustomClaims,
   setUserCustomClaims,

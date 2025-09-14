@@ -327,6 +327,15 @@ const updateFeaturesValidation = [
 ];
 
 /**
+ * Validation for updating retention settings
+ */
+const updateRetentionValidation = [
+  body('menOriginalRetentionDays')
+    .isInt({ min: 1, max: 365 })
+    .withMessage('menOriginalRetentionDays must be an integer between 1 and 365')
+];
+
+/**
  * Validation for creating export job
  */
 const createExportJobValidation = [
@@ -480,6 +489,7 @@ module.exports = {
   // Features
   getFeaturesValidation,
   updateFeaturesValidation,
+  updateRetentionValidation,
   
   // Exports
   createExportJobValidation,

@@ -1,4 +1,4 @@
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore } = require('../firebase');
 const { createModuleLogger } = require('../logger');
 
 const logger = createModuleLogger('auth:permissions');

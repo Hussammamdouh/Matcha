@@ -36,6 +36,69 @@ router.post(
   createReport
 );
 
+// Unified report creation endpoint - handles all report types
+// POST /api/v1/reports/create { surface: 'feed'|'chat'|'men', entityType: 'post'|'comment'|'message'|'user', entityId: '...', reason: '...', details?: '...' }
+router.post(
+  '/create',
+  authenticateToken,
+  generalRateLimiter,
+  async (req, res) => {
+    try {
+      const { surface, entityType, entityId, reason, details } = req.body;
+      const userId = req.user.uid;
+
+      if (!surface || !entityType || !entityId || !reason) {
+        return res.status(400).json({
+          ok: false,
+          error: { 
+            code: 'MISSING_PARAMETERS', 
+            message: 'surface, entityType, entityId, and reason are required' 
+          }
+        });
+      }
+
+      if (!['feed', 'chat', 'men'].includes(surface)) {
+        return res.status(400).json({
+          ok: false,
+          error: { 
+            code: 'INVALID_SURFACE', 
+            message: 'surface must be feed, chat, or men' 
+          }
+        });
+      }
+
+      if (!['post', 'comment', 'message', 'user'].includes(entityType)) {
+        return res.status(400).json({
+          ok: false,
+          error: { 
+            code: 'INVALID_ENTITY_TYPE', 
+            message: 'entityType must be post, comment, message, or user' 
+          }
+        });
+      }
+
+      // Create the report using the existing controller
+      const reportData = {
+        surface,
+        entityType,
+        entityId,
+        reason,
+        details: details || '',
+        reporterId: userId
+      };
+
+      // Call the existing createReport function
+      req.body = reportData;
+      return createReport(req, res);
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: { code: 'REPORT_CREATION_FAILED', message: 'Failed to create report' }
+      });
+    }
+  }
+);
+
 // Get report by ID (requires authentication)
 router.get('/:id', authenticateToken, getReportValidation, validate, getReport);
 

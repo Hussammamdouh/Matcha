@@ -1,8 +1,14 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { verifyFirebaseIdToken } = require('../../middlewares/firebaseAuth');
+const { authenticateToken } = require('../../middlewares/auth');
 const { asyncHandler } = require('../../middlewares/error');
+const { validateBody, validateQuery } = require('../../middlewares/validation');
 const userController = require('./controller');
+const postsController = require('../posts/controller');
+const followController = require('./social.controller');
+const settingsController = require('./settings.controller');
+const { updateSettingsValidation, paginationValidation } = require('./settings.validators');
+const blocksController = require('../chat/blocks/controller');
 
 const router = express.Router();
 
@@ -82,7 +88,19 @@ const router = express.Router();
  *       401:
  *         description: Authentication required
  */
-router.get('/', verifyFirebaseIdToken, asyncHandler(userController.getProfile));
+router.get('/', authenticateToken, asyncHandler(userController.getProfile));
+router.get('/stats', authenticateToken, asyncHandler(userController.getMyStatsAndPosts));
+router.get('/likes', authenticateToken, asyncHandler(userController.getMyLikedPosts));
+router.get('/saves', authenticateToken, asyncHandler(postsController.getSavedPosts));
+
+// Follow/unfollow endpoints
+router.post('/follow/:targetUid', authenticateToken, asyncHandler(followController.followUser));
+router.post('/unfollow/:targetUid', authenticateToken, asyncHandler(followController.unfollowUser));
+// Note: Detailed following/followers endpoints are now under /me/following and /me/followers
+
+// Block/unblock endpoints
+router.post('/block', authenticateToken, asyncHandler(blocksController.blockUser));
+router.delete('/block/:blockedUserId', authenticateToken, asyncHandler(blocksController.unblockUser));
 
 /**
  * @swagger
@@ -108,7 +126,7 @@ router.get('/', verifyFirebaseIdToken, asyncHandler(userController.getProfile));
  */
 router.patch(
   '/',
-  verifyFirebaseIdToken,
+  authenticateToken,
   [
     body('nickname')
       .optional()
@@ -136,7 +154,7 @@ router.patch(
  */
 router.post(
   '/email/verify/send',
-  verifyFirebaseIdToken,
+  authenticateToken,
   asyncHandler(userController.sendEmailVerification)
 );
 
@@ -154,7 +172,17 @@ router.post(
  *       401:
  *         description: Authentication required
  */
-router.post('/logout', verifyFirebaseIdToken, asyncHandler(userController.logout));
+router.post(
+  '/logout',
+  authenticateToken,
+  asyncHandler(async (req, res, next) => {
+    const all = !!req.body?.all;
+    if (all) {
+      return userController.logoutAll(req, res, next);
+    }
+    return userController.logout(req, res, next);
+  })
+);
 
 /**
  * @swagger
@@ -170,7 +198,8 @@ router.post('/logout', verifyFirebaseIdToken, asyncHandler(userController.logout
  *       401:
  *         description: Authentication required
  */
-router.post('/logout-all', verifyFirebaseIdToken, asyncHandler(userController.logoutAll));
+// Backwards compatibility: deprecated in favor of POST /me/logout { all: true }
+router.post('/logout-all', authenticateToken, asyncHandler(userController.logoutAll));
 
 /**
  * @swagger
@@ -186,7 +215,7 @@ router.post('/logout-all', verifyFirebaseIdToken, asyncHandler(userController.lo
  *       401:
  *         description: Authentication required
  */
-router.delete('/', verifyFirebaseIdToken, asyncHandler(userController.deleteAccount));
+router.delete('/', authenticateToken, asyncHandler(userController.deleteAccount));
 
 /**
  * @swagger
@@ -222,7 +251,7 @@ router.delete('/', verifyFirebaseIdToken, asyncHandler(userController.deleteAcco
  */
 router.post(
   '/avatar/upload-url',
-  verifyFirebaseIdToken,
+  authenticateToken,
   [
     body('fileName').isString().notEmpty().withMessage('File name is required'),
     body('contentType').isString().notEmpty().withMessage('Content type is required'),
@@ -260,9 +289,233 @@ router.post(
  */
 router.post(
   '/avatar/confirm',
-  verifyFirebaseIdToken,
+  authenticateToken,
   [body('filePath').isString().notEmpty().withMessage('File path is required')],
   asyncHandler(userController.confirmAvatarUpload)
+);
+
+// User Settings Routes
+/**
+ * @swagger
+ * /api/v1/me/settings:
+ *   get:
+ *     summary: Get user settings
+ *     tags: [User Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User settings retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accountPrivacy:
+ *                       type: string
+ *                       enum: [public, private]
+ *                       example: public
+ *                     showLikedPosts:
+ *                       type: boolean
+ *                       example: true
+ *                     showFollowing:
+ *                       type: boolean
+ *                       example: true
+ *                     showFollowers:
+ *                       type: boolean
+ *                       example: true
+ *       401:
+ *         description: Authentication required
+ */
+router.get('/settings', authenticateToken, asyncHandler(settingsController.getUserSettings));
+
+/**
+ * @swagger
+ * /api/v1/me/settings:
+ *   patch:
+ *     summary: Update user settings
+ *     tags: [User Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               accountPrivacy:
+ *                 type: string
+ *                 enum: [public, private]
+ *                 description: Account privacy setting
+ *               showLikedPosts:
+ *                 type: boolean
+ *                 description: Whether to show liked posts publicly
+ *               showFollowing:
+ *                 type: boolean
+ *                 description: Whether to show following list publicly
+ *               showFollowers:
+ *                 type: boolean
+ *                 description: Whether to show followers list publicly
+ *     responses:
+ *       200:
+ *         description: Settings updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Authentication required
+ */
+router.patch(
+  '/settings',
+  authenticateToken,
+  validateBody(updateSettingsValidation),
+  asyncHandler(settingsController.updateUserSettings)
+);
+
+/**
+ * @swagger
+ * /api/v1/me/communities:
+ *   get:
+ *     summary: Get user's communities
+ *     tags: [User Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of communities per page
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Pagination cursor
+ *     responses:
+ *       200:
+ *         description: User's communities retrieved successfully
+ *       401:
+ *         description: Authentication required
+ */
+router.get(
+  '/communities',
+  authenticateToken,
+  validateQuery(paginationValidation),
+  asyncHandler(settingsController.getUserCommunities)
+);
+
+/**
+ * @swagger
+ * /api/v1/me/followers:
+ *   get:
+ *     summary: Get detailed followers list
+ *     tags: [User Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of followers per page
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Pagination cursor
+ *     responses:
+ *       200:
+ *         description: Detailed followers retrieved successfully
+ *       401:
+ *         description: Authentication required
+ */
+router.get(
+  '/followers',
+  authenticateToken,
+  validateQuery(paginationValidation),
+  asyncHandler(settingsController.getDetailedFollowers)
+);
+
+/**
+ * @swagger
+ * /api/v1/me/following:
+ *   get:
+ *     summary: Get detailed following list
+ *     tags: [User Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of following per page
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Pagination cursor
+ *     responses:
+ *       200:
+ *         description: Detailed following retrieved successfully
+ *       401:
+ *         description: Authentication required
+ */
+router.get(
+  '/following',
+  authenticateToken,
+  validateQuery(paginationValidation),
+  asyncHandler(settingsController.getDetailedFollowing)
+);
+
+/**
+ * @swagger
+ * /api/v1/me/blocked:
+ *   get:
+ *     summary: Get detailed blocked users list
+ *     tags: [User Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of blocked users per page
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Pagination cursor
+ *     responses:
+ *       200:
+ *         description: Detailed blocked users retrieved successfully
+ *       401:
+ *         description: Authentication required
+ */
+router.get(
+  '/blocked',
+  authenticateToken,
+  validateQuery(paginationValidation),
+  asyncHandler(settingsController.getDetailedBlockedUsers)
 );
 
 module.exports = router;

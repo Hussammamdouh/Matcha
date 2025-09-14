@@ -1,7 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const { redisClient } = require('./rateLimit');
 const { config } = require('../config');
-const logger = require('../lib/logger');
+const { createModuleLogger } = require('../lib/logger');
+const logger = createModuleLogger('idempotency');
 
 /**
  * Idempotency middleware for destructive admin actions

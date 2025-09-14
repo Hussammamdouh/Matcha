@@ -126,6 +126,36 @@ router.post('/presence/heartbeat', typingPresenceLimiter, async (req, res) => {
   }
 });
 
+// Unified chat heartbeat: optionally accept presence, typing, and read in one call
+// POST /api/v1/chat/heartbeat { presence?: { state }, typing?: { conversationId, isTyping }, read?: { conversationId, at? } }
+router.post('/heartbeat', typingPresenceLimiter, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { presence, typing, read } = req.body || {};
+
+    const results = {};
+
+    if (presence && typeof presence.state === 'string') {
+      results.presence = await presenceService.updatePresence(userId, presence.state);
+    }
+
+    if (typing && typing.conversationId && typeof typing.isTyping === 'boolean') {
+      await presenceService.setTypingStatus(typing.conversationId, userId, typing.isTyping);
+      results.typing = { conversationId: typing.conversationId, isTyping: typing.isTyping };
+    }
+
+    if (read && read.conversationId) {
+      const readAt = read.at ? new Date(read.at) : null;
+      await presenceService.markAsRead(read.conversationId, userId, readAt);
+      results.read = { conversationId: read.conversationId, at: readAt || new Date() };
+    }
+
+    return res.json({ ok: true, data: results });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to process heartbeat' } });
+  }
+});
+
 /**
  * @swagger
  * /api/v1/chat/conversations/{id}/typing:
@@ -308,5 +338,70 @@ router.post('/conversations/:id/read', async (req, res) => {
     });
   }
 });
+
+// Unified chat operations endpoint
+// POST /api/v1/chat/operations { action: 'create-conversation'|'send-message'|'get-messages'|'block-user'|'unblock-user', ...actionData }
+router.post(
+  '/operations',
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { action, ...actionData } = req.body;
+      const userId = req.user.uid;
+
+      if (!action) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'MISSING_ACTION', message: 'Action is required' }
+        });
+      }
+
+      const validActions = ['create-conversation', 'send-message', 'get-messages', 'block-user', 'unblock-user'];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({
+          ok: false,
+          error: { 
+            code: 'INVALID_ACTION', 
+            message: `Action must be one of: ${validActions.join(', ')}` 
+          }
+        });
+      }
+
+      // Import the necessary controllers
+      const conversationController = require('./conversations/controller');
+      const messageController = require('./messages/controller');
+      const blocksController = require('./blocks/controller');
+
+      // Route to appropriate controller based on action
+      switch (action) {
+        case 'create-conversation':
+          req.body = actionData;
+          return conversationController.createConversation(req, res);
+        case 'send-message':
+          req.body = actionData;
+          return messageController.sendMessage(req, res);
+        case 'get-messages':
+          req.query = actionData;
+          return messageController.getMessages(req, res);
+        case 'block-user':
+          req.body = actionData;
+          return blocksController.blockUser(req, res);
+        case 'unblock-user':
+          req.body = actionData;
+          return blocksController.unblockUser(req, res);
+        default:
+          return res.status(400).json({
+            ok: false,
+            error: { code: 'INVALID_ACTION', message: 'Unknown action' }
+          });
+      }
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: { code: 'CHAT_OPERATION_FAILED', message: 'Failed to perform chat operation' }
+      });
+    }
+  }
+);
 
 module.exports = router;

@@ -6,9 +6,19 @@ const { features } = require('../../config');
  * Validation schemas for post endpoints
  */
 
-// Create post validation
+// Create post validation (supports public posts without communityId)
 const createPostValidation = [
-  body('communityId').isString().trim().notEmpty().withMessage('Community ID is required'),
+  body('visibility')
+    .optional()
+    .isIn(['public', 'community'])
+    .withMessage('Visibility must be public or community'),
+
+  body('communityId')
+    .optional()
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage('Community ID must be a non-empty string when provided'),
 
   body('title')
     .trim()

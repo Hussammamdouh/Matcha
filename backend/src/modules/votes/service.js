@@ -1,8 +1,8 @@
-const { getFirestore } = require('../../../lib/firebase');
+const { db } = require('../../../lib/firebase');
 const { computeHotScore } = require('../../lib/ranking');
 const { createModuleLogger } = require('../../lib/logger');
 
-const db = getFirestore();
+
 const logger = createModuleLogger();
 
 /**
@@ -73,6 +73,7 @@ async function voteOnPost(postId, userId, value) {
         // Set or update vote
         transaction.set(voteRef, {
           value,
+          uid: userId,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -95,6 +96,14 @@ async function voteOnPost(postId, userId, value) {
       };
 
       transaction.update(postRef, updateData);
+
+      // Mirror like to top-level likes collection for querying
+      const likesRef = db.collection('likes').doc(`${userId}_${postId}`);
+      if (value === 1) {
+        transaction.set(likesRef, { userId, postId, likedAt: new Date() });
+      } else if (value === 0 && currentVote === 1) {
+        transaction.delete(likesRef);
+      }
 
       // Return updated post data
       return {
@@ -186,6 +195,7 @@ async function voteOnComment(commentId, userId, value) {
         // Set or update vote
         transaction.set(voteRef, {
           value,
+          uid: userId,
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -211,6 +221,7 @@ async function voteOnComment(commentId, userId, value) {
         ...commentData,
         ...updateData,
         userVote: value === 0 ? null : value,
+        postId: commentData.postId,
       };
     });
 

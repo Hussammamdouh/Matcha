@@ -140,12 +140,23 @@ async function listDevices(req, res) {
 
   try {
     const firestore = getFirestore();
+    const { pageSize = 20, cursor = null } = req.query;
 
-    const devicesSnapshot = await firestore
+    let query = firestore
       .collection('devices')
       .where('userId', '==', uid)
-      .orderBy('lastSeen', 'desc')
-      .get();
+      .orderBy('lastSeen', 'desc');
+
+    if (cursor) {
+      try {
+        const cursorDoc = await firestore.collection('devices').doc(cursor).get();
+        if (cursorDoc.exists) {
+          query = query.startAfter(cursorDoc);
+        }
+      } catch (_) {}
+    }
+
+    const devicesSnapshot = await query.limit(parseInt(pageSize)).get();
 
     const devices = devicesSnapshot.docs.map(doc => {
       const data = doc.data();
@@ -168,14 +179,18 @@ async function listDevices(req, res) {
 
     res.status(200).json({
       ok: true,
-      data: {
-        devices,
-        count: devices.length,
+      data: devices,
+      meta: {
+        pagination: {
+          pageSize: parseInt(pageSize),
+          hasMore: devices.length === parseInt(pageSize),
+          nextCursor: devicesSnapshot.docs.length === parseInt(pageSize)
+            ? devicesSnapshot.docs[devicesSnapshot.docs.length - 1].id
+            : null,
+        },
       },
       error: null,
-      meta: {
-        requestId: req.id,
-      },
+      requestId: req.id,
     });
   } catch (error) {
     logger.error('Failed to retrieve devices', {
@@ -295,5 +310,7 @@ module.exports = {
   listDevices,
   revokeDevice,
 };
+
+
 
 

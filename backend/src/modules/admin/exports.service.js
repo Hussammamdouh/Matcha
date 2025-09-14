@@ -1,12 +1,19 @@
-const { getFirestore } = require('firebase-admin/firestore');
-const { getStorage } = require('firebase-admin/storage');
-const { createLogger } = require('../../lib/logger');
+const { getFirestore, getStorage } = require('../../lib/firebase');
+const { createModuleLogger } = require('../../lib/logger');
 const crypto = require('crypto');
 
-const db = getFirestore();
-const storage = getStorage();
-const bucket = storage.bucket();
-const logger = createLogger('admin:exports:service');
+let db;
+let storage;
+let bucket;
+const logger = createModuleLogger('admin:exports:service');
+
+function ensureInitialized() {
+  if (!db || !storage || !bucket) {
+    db = getFirestore();
+    storage = getStorage();
+    bucket = storage.bucket();
+  }
+}
 
 /**
  * Create a content export job for a user
@@ -16,6 +23,7 @@ const logger = createLogger('admin:exports:service');
  * @returns {Promise<Object>} Export job details
  */
 async function createExportJob(userId, adminId, options = {}) {
+  ensureInitialized();
   try {
     // Check if user exists
     const userRef = db.collection('users').doc(userId);
@@ -92,6 +100,7 @@ async function createExportJob(userId, adminId, options = {}) {
  * @param {string} jobId - Export job ID
  */
 async function processExportJob(jobId) {
+  ensureInitialized();
   try {
     const jobRef = db.collection('export_jobs').doc(jobId);
     
@@ -199,6 +208,7 @@ async function processExportJob(jobId) {
  * @returns {Promise<Object>} Collected user data
  */
 async function collectUserData(userId, options) {
+  ensureInitialized();
   const userData = {
     userId,
     exportedAt: new Date().toISOString(),
@@ -374,6 +384,7 @@ async function collectUserData(userId, options) {
  * @returns {Promise<Object|null>} Export job details or null if not found
  */
 async function getExportJob(jobId) {
+  ensureInitialized();
   try {
     const jobDoc = await db.collection('export_jobs').doc(jobId).get();
     
@@ -425,6 +436,7 @@ async function getExportJob(jobId) {
  * @returns {Promise<Object>} Paginated export jobs
  */
 async function listExportJobs(options = {}) {
+  ensureInitialized();
   try {
     const { userId, status, requestedBy, cursor, limit = 20 } = options;
     
@@ -508,6 +520,7 @@ async function listExportJobs(options = {}) {
  * @returns {Promise<Object>} Cancellation result
  */
 async function cancelExportJob(jobId, adminId) {
+  ensureInitialized();
   try {
     const jobRef = db.collection('export_jobs').doc(jobId);
     
@@ -567,6 +580,7 @@ async function cancelExportJob(jobId, adminId) {
  * @returns {Promise<Object>} Deletion result
  */
 async function deleteExportJob(jobId, adminId) {
+  ensureInitialized();
   try {
     const jobRef = db.collection('export_jobs').doc(jobId);
     

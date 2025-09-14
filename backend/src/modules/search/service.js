@@ -1,6 +1,7 @@
 const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../lib/logger');
-const { generateCursor, parseCursor } = require('../../lib/ranking');
+const { encodeCursor, decodeCursor } = require('../../lib/pagination');
+const { caches } = require('../../lib/cache');
 
 const db = getFirestore();
 const logger = createModuleLogger();
@@ -41,7 +42,7 @@ async function globalSearch(query, options = {}) {
     };
 
     // Parse cursor for pagination
-    const cursorData = cursor ? parseCursor(cursor) : null;
+    const cursorData = cursor ? decodeCursor(cursor) : null;
 
     if (type === 'all' || type === 'posts') {
       const postsQuery = await searchPosts(query, { category, sortBy, cursor: cursorData, limit });
@@ -82,6 +83,11 @@ async function globalSearch(query, options = {}) {
       hasNextCursor: !!results.meta.nextCursor,
     });
 
+    // Light caching only for empty search query without cursor
+    if (!query && !cursor) {
+      const cacheKey = `search:${type}:${category || 'all'}:${sortBy}:${limit}`;
+      caches.search.set(cacheKey, results, 20_000);
+    }
     return results;
   } catch (error) {
     logger.error('Global search failed', { error: error.message, query });
@@ -122,8 +128,15 @@ async function searchPosts(query, options = {}) {
 
     // Apply cursor pagination
     if (cursor) {
-      // TODO: Implement cursor-based pagination for posts search
-      // This would require storing the last document reference
+      const decoded = decodeCursor(cursor);
+      if (decoded?.id) {
+        try {
+          const docSnap = await db.collection('posts').doc(decoded.id).get();
+          if (docSnap.exists) {
+            postsRef = postsRef.startAfter(docSnap);
+          }
+        } catch (_) {}
+      }
     }
 
     const snapshot = await postsRef.limit(limit).get();
@@ -142,7 +155,7 @@ async function searchPosts(query, options = {}) {
     // Generate next cursor
     const nextCursor =
       snapshot.docs.length === limit
-        ? generateCursor(snapshot.docs[snapshot.docs.length - 1])
+        ? encodeCursor({ id: snapshot.docs[snapshot.docs.length - 1].id, createdAt: snapshot.docs[snapshot.docs.length - 1].get('createdAt') })
         : null;
 
     return {
@@ -189,7 +202,15 @@ async function searchCommunities(query, options = {}) {
 
     // Apply cursor pagination
     if (cursor) {
-      // TODO: Implement cursor-based pagination for communities search
+      const decoded = decodeCursor(cursor);
+      if (decoded?.id) {
+        try {
+          const docSnap = await db.collection('communities').doc(decoded.id).get();
+          if (docSnap.exists) {
+            communitiesRef = communitiesRef.startAfter(docSnap);
+          }
+        } catch (_) {}
+      }
     }
 
     const snapshot = await communitiesRef.limit(limit).get();
@@ -208,7 +229,7 @@ async function searchCommunities(query, options = {}) {
     // Generate next cursor
     const nextCursor =
       snapshot.docs.length === limit
-        ? generateCursor(snapshot.docs[snapshot.docs.length - 1])
+        ? encodeCursor({ id: snapshot.docs[snapshot.docs.length - 1].id, createdAt: snapshot.docs[snapshot.docs.length - 1].get('createdAt') })
         : null;
 
     return {
@@ -247,7 +268,15 @@ async function searchUsers(query, options = {}) {
 
     // Apply cursor pagination
     if (cursor) {
-      // TODO: Implement cursor-based pagination for users search
+      const decoded = decodeCursor(cursor);
+      if (decoded?.id) {
+        try {
+          const docSnap = await db.collection('users').doc(decoded.id).get();
+          if (docSnap.exists) {
+            usersRef = usersRef.startAfter(docSnap);
+          }
+        } catch (_) {}
+      }
     }
 
     const snapshot = await usersRef.limit(limit).get();
@@ -269,7 +298,7 @@ async function searchUsers(query, options = {}) {
     // Generate next cursor
     const nextCursor =
       snapshot.docs.length === limit
-        ? generateCursor(snapshot.docs[snapshot.docs.length - 1])
+        ? encodeCursor({ id: snapshot.docs[snapshot.docs.length - 1].id, createdAt: snapshot.docs[snapshot.docs.length - 1].get('createdAt') })
         : null;
 
     return {

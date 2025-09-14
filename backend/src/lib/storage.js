@@ -1,4 +1,4 @@
-const { getStorage } = require('../firebase');
+const { storage, getStorage } = require('./firebase');
 const { features } = require('../config');
 const { createModuleLogger } = require('./logger');
 
@@ -15,6 +15,11 @@ const MEDIA_CONFIG = {
     allowedTypes: ['image/jpeg', 'image/png', 'image/webp'],
     maxSize: 5 * 1024 * 1024, // 5MB
     extensions: ['.jpg', '.jpeg', '.png', '.webp'],
+  },
+  videos: {
+    allowedTypes: ['video/mp4', 'video/webm', 'video/quicktime'],
+    maxSize: 25 * 1024 * 1024, // 25MB (aligns with storage.rules for posts)
+    extensions: ['.mp4', '.webm', '.mov'],
   },
   audio: {
     allowedTypes: ['audio/mpeg', 'audio/aac', 'audio/webm'],
@@ -40,7 +45,7 @@ function validateMedia(mimeType, size, mediaType) {
     };
   }
 
-  const config = MEDIA_CONFIG[mediaType === 'audio' ? 'audio' : 'images'];
+  const config = MEDIA_CONFIG[mediaType] || MEDIA_CONFIG.images;
 
   // Validate MIME type
   if (!config.allowedTypes.includes(mimeType)) {
@@ -73,7 +78,6 @@ function validateMedia(mimeType, size, mediaType) {
  */
 async function generateSignedUrl(filePath, mimeType, intent, expiresIn = 900) {
   try {
-    const storage = getStorage();
     const bucket = storage.bucket();
 
     // Validate intent
@@ -82,22 +86,30 @@ async function generateSignedUrl(filePath, mimeType, intent, expiresIn = 900) {
       throw new Error(`Invalid upload intent: ${intent}`);
     }
 
-    // Validate media type for the intent
-    if (intent === 'avatar') {
-      const imageValidation = validateMedia(mimeType, 0, 'image');
-      if (!imageValidation.isValid) {
-        throw new Error(imageValidation.error);
-      }
+    // Determine media type from MIME
+    const mimeTop = (mimeType || '').split('/')[0];
+    const mediaType = mimeTop === 'video' ? 'videos' : mimeTop === 'audio' ? 'audio' : 'images';
+
+    // Validate media constraints based on intent
+    const validation = validateMedia(mimeType, 0, mediaType === 'videos' ? 'videos' : mediaType);
+    if (intent === 'avatar' && mediaType !== 'images') {
+      throw new Error('Avatar uploads must be images');
+    }
+    if (!validation.isValid) {
+      throw new Error(validation.error);
     }
 
     // Generate unique filename
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 15);
-    const extension = mimeType.split('/')[1];
+    const extension = (mimeType.split('/')[1] || 'bin');
     const fileName = `${timestamp}_${randomId}.${extension}`;
 
     // Construct full path
     const fullPath = `${filePath}/${fileName}`;
+
+    // Select appropriate max size cap for the signed URL
+    const maxAllowed = (MEDIA_CONFIG[mediaType] || MEDIA_CONFIG.images).maxSize;
 
     // Generate signed URL for PUT operation
     const [url] = await bucket.file(fullPath).getSignedUrl({
@@ -106,7 +118,7 @@ async function generateSignedUrl(filePath, mimeType, intent, expiresIn = 900) {
       expires: Date.now() + expiresIn * 1000,
       contentType: mimeType,
       conditions: [
-        ['content-length-range', 0, MEDIA_CONFIG.images.maxSize], // Use max image size as upper bound
+        ['content-length-range', 0, maxAllowed],
       ],
     });
 

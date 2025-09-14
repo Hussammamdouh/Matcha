@@ -2,7 +2,8 @@ const express = require('express');
 const { db, storage } = require('../lib/firebase');
 const { redisClient } = require('../middlewares/rateLimit');
 const { config } = require('../config');
-const logger = require('../lib/logger');
+const { createModuleLogger } = require('../lib/logger');
+const logger = createModuleLogger('health');
 
 const router = express.Router();
 
@@ -46,8 +47,9 @@ router.get('/readyz', async (req, res) => {
   const startTime = Date.now();
   const checks = {
     firestore: false,
+    firestoreWrite: false,
     storage: false,
-    redis: false
+    ai: false
   };
 
   try {
@@ -64,6 +66,19 @@ router.get('/readyz', async (req, res) => {
       checks.firestore = false;
     }
 
+    // Check Firestore write/read probe (ephemeral)
+    try {
+      const writeStart = Date.now();
+      const probeRef = db.collection('_health').doc('probe');
+      await probeRef.set({ t: Date.now() }, { merge: true });
+      const snap = await probeRef.get();
+      if (snap.exists) checks.firestoreWrite = true;
+      logger.debug('Firestore write probe passed', { duration: Date.now() - writeStart });
+    } catch (error) {
+      logger.error('Firestore write probe failed', { error: error.message });
+      checks.firestoreWrite = false;
+    }
+
     // Check Storage connectivity
     try {
       const storageStart = Date.now();
@@ -78,22 +93,23 @@ router.get('/readyz', async (req, res) => {
       checks.storage = false;
     }
 
-    // Check Redis connectivity (if enabled)
-    if (config.redis?.enabled && redisClient) {
-      try {
-        const redisStart = Date.now();
-        await redisClient.ping();
-        checks.redis = true;
-        logger.debug('Redis health check passed', { 
-          duration: Date.now() - redisStart 
-        });
-      } catch (error) {
-        logger.error('Redis health check failed', { error: error.message });
-        checks.redis = false;
+    // Redis removed
+
+    // AI service health check (optional)
+    try {
+      const axios = require('axios');
+      const baseUrl = process.env.AI_SERVICE_URL;
+      if (baseUrl) {
+        const aiStart = Date.now();
+        const r = await axios.get(`${baseUrl}/healthz`, { timeout: 2000 });
+        checks.ai = r.status === 200 && r.data?.ok;
+        logger.debug('AI health check passed', { duration: Date.now() - aiStart });
+      } else {
+        checks.ai = true; // Not configured, treat as not required
       }
-    } else {
-      // Redis not configured, mark as healthy
-      checks.redis = true;
+    } catch (error) {
+      logger.error('AI health check failed', { error: error.message });
+      checks.ai = false;
     }
 
     const totalDuration = Date.now() - startTime;
@@ -112,9 +128,13 @@ router.get('/readyz', async (req, res) => {
           status: checks.storage ? 'healthy' : 'unhealthy',
           required: true
         },
-        redis: {
-          status: checks.redis ? 'healthy' : 'unhealthy',
-          required: config.redis?.enabled || false
+        firestoreWrite: {
+          status: checks.firestoreWrite ? 'healthy' : 'unhealthy',
+          required: true
+        },
+        ai: {
+          status: checks.ai ? 'healthy' : 'unhealthy',
+          required: false
         }
       },
       environment: config.env,

@@ -17,7 +17,7 @@
     "format": "prettier --write src/",
     "format:check": "prettier --check src/",
     "prepare": "husky install",
-    "seed": "node scripts/seed.js",
+    "seed": "node scripts/seedUsers.js",
     "deploy:rules": "firebase deploy --only firestore:rules,storage",
     "emulators": "firebase emulators:start --only auth,firestore,storage",
     "fly:deploy": "fly deploy",
@@ -71,6 +71,7 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "setupFiles": ["<rootDir>/jest.setup.js"],
     "collectCoverageFrom": [
       "src/**/*.js",
       "!src/app.js",

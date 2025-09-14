@@ -152,4 +152,63 @@ router.get('/', verifyFirebaseIdToken, asyncHandler(deviceController.listDevices
  */
 router.delete('/:deviceId', verifyFirebaseIdToken, asyncHandler(deviceController.revokeDevice));
 
+// Unified device management endpoint
+// POST /api/v1/me/devices/manage { action: 'register'|'list'|'revoke', deviceId?: '...', ...deviceData }
+router.post(
+  '/manage',
+  verifyFirebaseIdToken,
+  async (req, res) => {
+    try {
+      const { action, deviceId, ...deviceData } = req.body;
+      const userId = req.user.uid;
+
+      if (!action) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'MISSING_ACTION', message: 'Action is required' }
+        });
+      }
+
+      const validActions = ['register', 'list', 'revoke'];
+      if (!validActions.includes(action)) {
+        return res.status(400).json({
+          ok: false,
+          error: { 
+            code: 'INVALID_ACTION', 
+            message: `Action must be one of: ${validActions.join(', ')}` 
+          }
+        });
+      }
+
+      // Route to appropriate controller based on action
+      switch (action) {
+        case 'register':
+          req.body = deviceData;
+          return deviceController.registerDevice(req, res);
+        case 'list':
+          return deviceController.listDevices(req, res);
+        case 'revoke':
+          if (!deviceId) {
+            return res.status(400).json({
+              ok: false,
+              error: { code: 'MISSING_DEVICE_ID', message: 'deviceId is required for revoke action' }
+            });
+          }
+          req.params = { deviceId };
+          return deviceController.revokeDevice(req, res);
+        default:
+          return res.status(400).json({
+            ok: false,
+            error: { code: 'INVALID_ACTION', message: 'Unknown action' }
+          });
+      }
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: { code: 'DEVICE_MANAGEMENT_FAILED', message: 'Failed to manage device' }
+      });
+    }
+  }
+);
+
 module.exports = router;

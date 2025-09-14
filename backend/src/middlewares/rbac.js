@@ -1,5 +1,6 @@
 const { db } = require('../lib/firebase');
-const logger = require('../lib/logger');
+const { createModuleLogger } = require('../lib/logger');
+const logger = createModuleLogger('rbac');
 
 /**
  * Role-Based Access Control (RBAC) middleware

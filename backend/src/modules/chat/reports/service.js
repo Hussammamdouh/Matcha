@@ -1,8 +1,8 @@
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../../lib/logger');
 
 const logger = createModuleLogger('chat:reports:service');
-const db = getFirestore();
+let db;
 
 /**
  * Create a chat report
@@ -16,6 +16,7 @@ const db = getFirestore();
  * @returns {Promise<Object>} The created report
  */
 async function createReport(data) {
+  db = db || getFirestore();
   try {
     const {
       type,
@@ -89,6 +90,7 @@ async function createReport(data) {
  * @returns {Promise<Object>} Paginated list of reports
  */
 async function getReports(options = {}) {
+  db = db || getFirestore();
   try {
     const {
       status,
@@ -189,6 +191,7 @@ async function getReports(options = {}) {
  * @returns {Promise<Object>} The updated report
  */
 async function updateReportStatus(reportId, status, reviewerId, resolutionNote = null) {
+  db = db || getFirestore();
   try {
     // Validate status
     if (!['in_review', 'resolved', 'dismissed'].includes(status)) {
@@ -242,6 +245,7 @@ async function updateReportStatus(reportId, status, reviewerId, resolutionNote =
  * @returns {Promise<Object|null>} The report or null if not found
  */
 async function getReport(reportId) {
+  db = db || getFirestore();
   try {
     const reportDoc = await db.collection('chat_reports').doc(reportId).get();
 

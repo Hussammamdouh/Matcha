@@ -1,7 +1,8 @@
 const { body, param, query, validationResult } = require('express-validator');
 const sanitizeHtml = require('sanitize-html');
 const { features } = require('../config');
-const logger = require('../lib/logger');
+const { createModuleLogger } = require('../lib/logger');
+const logger = createModuleLogger('validation');
 
 /**
  * Sanitize HTML content with safe defaults

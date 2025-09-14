@@ -1,4 +1,4 @@
-const { getStorage } = require('../../firebase');
+const { getStorage } = require('../firebase');
 const { createModuleLogger } = require('../logger');
 
 const storage = getStorage();

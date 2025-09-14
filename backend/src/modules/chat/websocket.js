@@ -111,6 +111,24 @@ class ChatWebSocketGateway {
         });
       });
 
+      // Join post room for realtime comments
+      socket.on('join_post', (postId) => {
+        socket.join(`post:${postId}`);
+        logger.info('User joined post room', { 
+          userId: socket.userId, 
+          postId 
+        });
+      });
+
+      // Leave post room
+      socket.on('leave_post', (postId) => {
+        socket.leave(`post:${postId}`);
+        logger.info('User left post room', { 
+          userId: socket.userId, 
+          postId 
+        });
+      });
+
       // Disconnect handling
       socket.on('disconnect', () => {
         logger.info('User disconnected from WebSocket', { userId: socket.userId });
@@ -184,6 +202,63 @@ class ChatWebSocketGateway {
       isLocked,
       moderatorId,
       timestamp: new Date(),
+    });
+  }
+
+  // Method to broadcast new comment to post room
+  broadcastNewComment(postId, comment) {
+    this.io.to(`post:${postId}`).emit('new_comment', {
+      postId,
+      comment,
+      timestamp: new Date(),
+    });
+    
+    logger.info('Comment broadcasted to post room', { 
+      postId, 
+      commentId: comment.id 
+    });
+  }
+
+  // Method to broadcast comment update
+  broadcastCommentUpdate(postId, comment) {
+    this.io.to(`post:${postId}`).emit('comment_updated', {
+      postId,
+      comment,
+      timestamp: new Date(),
+    });
+    
+    logger.info('Comment update broadcasted to post room', { 
+      postId, 
+      commentId: comment.id 
+    });
+  }
+
+  // Method to broadcast comment deletion
+  broadcastCommentDeleted(postId, commentId) {
+    this.io.to(`post:${postId}`).emit('comment_deleted', {
+      postId,
+      commentId,
+      timestamp: new Date(),
+    });
+    
+    logger.info('Comment deletion broadcasted to post room', { 
+      postId, 
+      commentId 
+    });
+  }
+
+  // Method to broadcast comment vote update
+  broadcastCommentVote(postId, commentId, voteData) {
+    this.io.to(`post:${postId}`).emit('comment_vote_updated', {
+      postId,
+      commentId,
+      voteData,
+      timestamp: new Date(),
+    });
+    
+    logger.info('Comment vote update broadcasted to post room', { 
+      postId, 
+      commentId 
     });
   }
 

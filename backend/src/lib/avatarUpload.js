@@ -1,4 +1,4 @@
-const { getStorage } = require('../firebase');
+const { getStorage } = require('./firebase');
 const { createRequestLogger } = require('./logger');
 
 // Maximum file size: 5MB
@@ -162,5 +162,7 @@ module.exports = {
   MAX_FILE_SIZE,
   ALLOWED_TYPES,
 };
+
+
 
 
