@@ -487,6 +487,184 @@ async function getModerators(communityId) {
 }
 
 /**
+ * List community members with basic user info
+ * @param {string} communityId
+ * @param {Object} options
+ */
+async function listMembers(communityId, options = {}) {
+  try {
+    const { pageSize = 20, cursor = null } = options;
+    const membershipSnap = await db
+      .collection('community_members')
+      .where('communityId', '==', communityId)
+      .get();
+
+    const all = membershipSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Sort by joinedAt desc
+    all.sort((a, b) => {
+      const at = a.joinedAt?.toDate ? a.joinedAt.toDate() : new Date(a.joinedAt);
+      const bt = b.joinedAt?.toDate ? b.joinedAt.toDate() : new Date(b.joinedAt);
+      return bt - at;
+    });
+
+    let start = 0;
+    if (cursor) {
+      const idx = all.findIndex(x => x.id === cursor);
+      if (idx >= 0) start = idx + 1;
+    }
+    const page = all.slice(start, start + Math.min(pageSize, 100));
+    const hasMore = start + page.length < all.length;
+
+    // Hydrate minimal user info
+    const userIds = page.map(m => m.userId);
+    const usersSnap = userIds.length
+      ? await db.collection('users').where('uid', 'in', userIds).get()
+      : { empty: true, docs: [] };
+    const usersMap = {};
+    if (!usersSnap.empty) {
+      usersSnap.docs.forEach(doc => {
+        const u = doc.data();
+        usersMap[u.uid] = { uid: u.uid, nickname: u.nickname, avatarUrl: u.avatarUrl || null };
+      });
+    }
+
+    const members = page.map(m => ({
+      id: m.id,
+      userId: m.userId,
+      role: m.role,
+      joinedAt: m.joinedAt,
+      user: usersMap[m.userId] || { uid: m.userId },
+    }));
+
+    return {
+      members,
+      pagination: { pageSize: page.length, hasMore, nextCursor: hasMore ? page[page.length - 1].id : null },
+    };
+  } catch (error) {
+    logger.error('Failed to list community members', { error: error.message, communityId, options });
+    throw error;
+  }
+}
+
+/**
+ * Delete community with cascade cleanup
+ * - Only owner or platform admin can delete
+ * - Soft-delete content or remove as appropriate
+ * @param {string} communityId
+ * @param {string} userId
+ */
+async function deleteCommunity(communityId, userId) {
+  try {
+    // Load community
+    const communityRef = db.collection('communities').doc(communityId);
+    const communityDoc = await communityRef.get();
+    if (!communityDoc.exists) throw new Error('Community not found');
+    const community = communityDoc.data();
+
+    // Check permission: owner or admin
+    let isAdmin = false;
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      const role = userDoc.exists ? (userDoc.data().role || userDoc.data().adminRole) : null;
+      isAdmin = role === 'admin' || role === 'super_admin';
+    } catch (_) {}
+    const isOwner = community.ownerId === userId;
+    if (!isOwner && !isAdmin) {
+      throw new Error('Insufficient permissions to delete community');
+    }
+
+    // Best-effort: delete community icon/banner media
+    try {
+      const { getProvider } = require('../../lib/storageProvider');
+      const provider = getProvider();
+      const urls = [];
+      if (community.icon) urls.push(community.icon);
+      if (community.bannerUrl) urls.push(community.bannerUrl);
+
+      function extractObjectPathFromUrl(url) {
+        try {
+          if (!url || typeof url !== 'string') return null;
+          if (url.includes('res.cloudinary.com')) {
+            const idx = url.indexOf('/upload/');
+            if (idx !== -1) {
+              const after = url.substring(idx + '/upload/'.length);
+              const parts = after.split('/');
+              const maybeVersion = parts[0];
+              const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+              const pathParts = parts.slice(startIndex);
+              const last = pathParts.pop() || '';
+              const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+              const publicId = [...pathParts, withoutExt].join('/');
+              return publicId || null;
+            }
+          }
+          if (url.includes('storage.googleapis.com')) {
+            const u = new URL(url);
+            const segments = u.pathname.split('/').filter(Boolean);
+            if (segments.length >= 2) return decodeURIComponent(segments.slice(1).join('/'));
+          }
+          if (url.startsWith('gs://')) {
+            const pathStart = url.indexOf('/', 'gs://'.length);
+            if (pathStart > 0) return url.substring(pathStart + 1);
+          }
+          return null;
+        } catch (_) { return null; }
+      }
+
+      const deletions = [];
+      for (const u of urls) {
+        const objectPath = extractObjectPathFromUrl(u);
+        if (objectPath) deletions.push(provider.deleteFile(objectPath).catch(() => false));
+      }
+      if (deletions.length > 0) await Promise.allSettled(deletions);
+    } catch (e) {
+      logger.warn('Failed to delete community media (continuing)', { communityId, error: e.message });
+    }
+
+    // Cascade: soft-delete posts in this community (and use existing post cascade for comments/media/likes)
+    try {
+      const postsSnap = await db
+        .collection('posts')
+        .where('communityId', '==', communityId)
+        .where('isDeleted', '==', false)
+        .get();
+      if (!postsSnap.empty) {
+        const postsService = require('../posts/service');
+        for (const doc of postsSnap.docs) {
+          await postsService.deletePost(doc.id, community.ownerId);
+        }
+      }
+    } catch (e) {
+      logger.warn('Failed to cascade delete community posts (continuing)', { communityId, error: e.message });
+    }
+
+    // Remove memberships
+    try {
+      const membershipsSnap = await db
+        .collection('community_members')
+        .where('communityId', '==', communityId)
+        .get();
+      if (!membershipsSnap.empty) {
+        const batch = db.batch();
+        membershipsSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      logger.warn('Failed to delete community memberships (continuing)', { communityId, error: e.message });
+    }
+
+    // Finally, delete the community document
+    await communityRef.delete();
+
+    logger.info('Community deleted successfully', { communityId, deletedBy: userId });
+    return true;
+  } catch (error) {
+    logger.error('Failed to delete community', { error: error.message, communityId, userId });
+    throw error;
+  }
+}
+
+/**
  * Check if user is member of community
  *
  * @param {string} communityId - Community ID
@@ -530,4 +708,6 @@ module.exports = {
   leaveCommunity,
   getModerators,
   checkMembership,
+  listMembers,
+  deleteCommunity,
 };

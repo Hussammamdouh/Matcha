@@ -115,9 +115,11 @@ const router = express.Router();
  *       409:
  *         description: Email or nickname already exists
  */
+const directUpload = require('../../middlewares/directUpload');
 router.post(
   '/register-email',
   authRateLimiter,
+  directUpload({ namespace: 'register' }),
   [
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
@@ -125,6 +127,8 @@ router.post(
       .isLength({ min: 3, max: 20 })
       .matches(/^[a-zA-Z0-9_-]+$/)
       .withMessage('Nickname must be 3-20 characters, alphanumeric, underscore, or dash only'),
+    // Optional avatar URL when user has uploaded via storage first
+    body('avatarUrl').optional().isURL().withMessage('avatarUrl must be a valid URL'),
   ],
   asyncHandler(authController.registerWithEmail)
 );
@@ -258,8 +262,37 @@ router.post(
   asyncHandler(async (req, res) => {
     const { email, password } = req.body;
     const result = await loginWithEmailPassword(email, password);
-    res.status(200).json({ ok: true, data: result, error: null, meta: { requestId: req.id } });
+    const sessionStartedAt = Math.floor(Date.now() / 1000);
+    const tokenExpiresAt = sessionStartedAt + Number(result.expiresIn || 0);
+    // Set long-lived httpOnly refresh token cookie for transparent server-side refresh
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('refreshToken', result.refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      path: '/',
+      maxAge: 1000 * 60 * 60 * 24 * 365, // 1 year
+    });
+
+    res.status(200).json({
+      ok: true,
+      data: {
+        ...result,
+        sessionStartedAt,
+        tokenExpiresAt,
+      },
+      error: null,
+      meta: { requestId: req.id },
+    });
   })
+);
+
+// Refresh token: provide refreshToken in body and receive new idToken
+router.post(
+  '/refresh',
+  authRateLimiter,
+  [body('refreshToken').isString().notEmpty()],
+  asyncHandler(authController.refreshWithToken)
 );
 
 /**

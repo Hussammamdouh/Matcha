@@ -398,6 +398,67 @@ async function getModerators(req, res) {
   }
 }
 
+/**
+ * List community members
+ * GET /api/v1/communities/:id/members
+ */
+async function listMembers(req, res) {
+  try {
+    const { id } = req.params;
+    const { pageSize = 20, cursor = null } = req.query;
+    const result = await communitiesService.listMembers(id, { pageSize: parseInt(pageSize), cursor });
+    return res.json({ ok: true, data: result.members, meta: { pagination: result.pagination } });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to list members' } });
+  }
+}
+
+/**
+ * Delete community (owner or admin only)
+ * DELETE /api/v1/communities/:id
+ */
+async function deleteCommunity(req, res) {
+  try {
+    const { id } = req.params;
+    const { uid } = req.user;
+
+    logger.info('Deleting community', { communityId: id, userId: uid });
+
+    await communitiesService.deleteCommunity(id, uid);
+
+    res.json({
+      ok: true,
+      data: null,
+      meta: { message: 'Community deleted successfully' },
+    });
+  } catch (error) {
+    logger.error('Failed to delete community', {
+      error: error.message,
+      communityId: req.params.id,
+      userId: req.user?.uid,
+    });
+
+    if (error.message.includes('not found')) {
+      return res.status(404).json({
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'Community not found' },
+      });
+    }
+
+    if (error.message.includes('Insufficient permissions')) {
+      return res.status(403).json({
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'Insufficient permissions to delete community' },
+      });
+    }
+
+    res.status(500).json({
+      ok: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to delete community' },
+    });
+  }
+}
+
 module.exports = {
   createCommunity,
   getCommunity,
@@ -406,4 +467,6 @@ module.exports = {
   joinCommunity,
   leaveCommunity,
   getModerators,
+  listMembers,
+  deleteCommunity,
 };

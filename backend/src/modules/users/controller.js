@@ -4,6 +4,7 @@ const { createRequestLogger } = require('../../lib/logger');
 const { createAuditLog } = require('../audit/service');
 const { db } = require('../../../lib/firebase');
 const postsService = require('../posts/service');
+const settingsService = require('./settings.service');
 const {
   generateAvatarUploadUrl,
   getAvatarPublicUrl,
@@ -71,6 +72,97 @@ async function getProfile(req, res) {
 }
 
 /**
+ * Get public profile with privacy checks
+ * GET /api/v1/users/:id
+ */
+async function getPublicProfile(req, res) {
+  const logger = createRequestLogger(req.id);
+  try {
+    const targetId = req.params.id;
+    const requesterId = req.user?.uid || null;
+    const firestore = getFirestore();
+    const userDoc = await firestore.collection('users').doc(targetId).get();
+    if (!userDoc.exists) return res.status(404).json({ ok: false, error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+    const userData = userDoc.data();
+
+    const settings = await require('./settings.service').getUserSettings(targetId);
+    const isPrivate = settings.accountPrivacy === 'private';
+
+    if (isPrivate && requesterId !== targetId) {
+      return res.json({ ok: true, data: { uid: targetId, nickname: userData.nickname, avatarUrl: userData.avatarUrl || null, private: true }, meta: { message: 'This account is private' } });
+    }
+
+    return res.json({ ok: true, data: { uid: targetId, nickname: userData.nickname, avatarUrl: userData.avatarUrl || null, bio: userData.bio || null, private: false } });
+  } catch (error) {
+    logger.error('Failed to get public profile', { error: error.message, targetId: req.params.id });
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to get user' } });
+  }
+}
+
+/**
+ * Get user's liked posts with privacy
+ * GET /api/v1/users/:id/likes
+ */
+async function getUserLikedPosts(req, res) {
+  const logger = createRequestLogger(req.id);
+  try {
+    const targetId = req.params.id;
+    const requesterId = req.user?.uid || null;
+    const settings = await require('./settings.service').getUserSettings(targetId);
+    if (!settings.showLikedPosts && requesterId !== targetId) {
+      return res.status(403).json({ ok: false, error: { code: 'LIKES_PRIVATE', message: 'Liked posts are private' } });
+    }
+    const result = await postsService.getSavedPosts(targetId, { pageSize: parseInt(req.query.pageSize || '20'), cursor: req.query.cursor || null });
+    return res.json({ ok: true, data: result.posts, meta: { pagination: result.pagination } });
+  } catch (error) {
+    logger.error('Failed to get user liked posts', { error: error.message, targetId: req.params.id });
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to get liked posts' } });
+  }
+}
+
+/**
+ * Get user's followers with privacy
+ * GET /api/v1/users/:id/followers
+ */
+async function getUserFollowers(req, res) {
+  const logger = createRequestLogger(req.id);
+  try {
+    const targetId = req.params.id;
+    const requesterId = req.user?.uid || null;
+    const settings = await require('./settings.service').getUserSettings(targetId);
+    if (!settings.showFollowers && requesterId !== targetId) {
+      return res.status(403).json({ ok: false, error: { code: 'FOLLOWERS_PRIVATE', message: 'Followers list is private' } });
+    }
+    const result = await settingsService.getDetailedFollowers(targetId, { pageSize: parseInt(req.query.pageSize || '20'), cursor: req.query.cursor || null });
+    return res.json({ ok: true, data: result.followers, meta: { pagination: result.pagination } });
+  } catch (error) {
+    logger.error('Failed to get user followers', { error: error.message, targetId: req.params.id });
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to get followers' } });
+  }
+}
+
+/**
+ * Get user's following with privacy
+ * GET /api/v1/users/:id/following
+ */
+async function getUserFollowing(req, res) {
+  const logger = createRequestLogger(req.id);
+  try {
+    const targetId = req.params.id;
+    const requesterId = req.user?.uid || null;
+    const settings = await require('./settings.service').getUserSettings(targetId);
+    if (!settings.showFollowing && requesterId !== targetId) {
+      return res.status(403).json({ ok: false, error: { code: 'FOLLOWING_PRIVATE', message: 'Following list is private' } });
+    }
+    const result = await settingsService.getDetailedFollowing(targetId, { pageSize: parseInt(req.query.pageSize || '20'), cursor: req.query.cursor || null });
+    return res.json({ ok: true, data: result.following, meta: { pagination: result.pagination } });
+  } catch (error) {
+    logger.error('Failed to get user following', { error: error.message, targetId: req.params.id });
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to get following' } });
+  }
+}
+
+/**
  * Update current user profile
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -90,7 +182,7 @@ async function updateProfile(req, res) {
     });
   }
 
-  const { nickname, avatarUrl } = req.body;
+  const { nickname, avatarUrl, media } = req.body;
   const { uid } = req.user;
 
   try {
@@ -119,8 +211,12 @@ async function updateProfile(req, res) {
       updateData.nickname = nickname;
     }
 
+    // Handle avatar URL - either from direct upload or provided URL
     if (avatarUrl) {
       updateData.avatarUrl = avatarUrl;
+    } else if (media && media.length > 0) {
+      // Use first uploaded media as avatar
+      updateData.avatarUrl = media[0].url;
     }
 
     // Update user profile
@@ -633,6 +729,10 @@ async function getMyLikedPosts(req, res) {
 
 module.exports = {
   getProfile,
+  getPublicProfile,
+  getUserLikedPosts,
+  getUserFollowers,
+  getUserFollowing,
   updateProfile,
   sendEmailVerification,
   logout,

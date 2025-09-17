@@ -109,6 +109,14 @@ const config = {
     firebaseProjectId: process.env.TEST_FIREBASE_PROJECT_ID,
     credentialsPath: process.env.TEST_GOOGLE_APPLICATION_CREDENTIALS,
   },
+
+  // Storage provider
+  storageProvider: (process.env.STORAGE_PROVIDER || 'firebase').toLowerCase(),
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
 };
 
 /**

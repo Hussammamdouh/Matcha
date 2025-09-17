@@ -132,6 +132,7 @@ function createApp() {
   const sessionRoutes = require('./modules/sessions/routes');
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/me', userRoutes);
+  app.use('/api/v1/users', userRoutes); // Public user endpoints
   app.use('/api/v1/me/devices', deviceRoutes);
   app.use('/api/v1/me/sessions', sessionRoutes);
 

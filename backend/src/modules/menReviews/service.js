@@ -38,53 +38,38 @@ async function aggregateCommunityVotesForUser(userId, options = {}) {
     }
 
     // 2) For each community, fetch a small window of recent votes
-    // Merge-sort them in memory by createdAt desc to avoid composite indexes
+    // Avoid composite indexes by NOT ordering in Firestore; sort/filter in memory
     const perCommunityFetch = Math.max(limit, 25);
 
     const perCommunityPromises = communityIds.map(async communityId => {
-      let q = db
+      const snap = await db
         .collection('men_reviews')
         .where('communityId', '==', communityId)
-        .orderBy('createdAt', 'desc')
-        .limit(perCommunityFetch);
+        .limit(perCommunityFetch)
+        .get();
 
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (beforeTs) {
-        q = q.where('createdAt', '<', beforeTs);
+        list = list.filter(item => {
+          const ts = item.createdAt?.toMillis?.() || 0;
+          return ts > 0 && ts < beforeTs.getTime();
+        });
       }
-
-      const snap = await q.get();
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort by createdAt desc in-memory
+      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      return list.slice(0, perCommunityFetch);
     });
 
     const perCommunityLists = await Promise.all(perCommunityPromises);
 
-    // 3) Merge K sorted lists (already desc by createdAt) and take first N
-    const merged = [];
-    const indices = new Array(perCommunityLists.length).fill(0);
-
-    while (merged.length < limit) {
-      let bestList = -1;
-      let bestItem = null;
-
-      for (let i = 0; i < perCommunityLists.length; i++) {
-        const idx = indices[i];
-        const list = perCommunityLists[i];
-        if (idx >= list.length) continue;
-        const candidate = list[idx];
-        if (!bestItem || (candidate.createdAt?.toMillis?.() || 0) > (bestItem.createdAt?.toMillis?.() || 0)) {
-          bestItem = candidate;
-          bestList = i;
-        }
-      }
-
-      if (bestList === -1) break; // exhausted
-      merged.push(bestItem);
-      indices[bestList] += 1;
-    }
+    // 3) Merge all lists and take first N by createdAt desc
+    const merged = perCommunityLists.flat();
+    merged.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+    const window = merged.slice(0, limit);
 
     // 4) Collect unique voterIds and communityIds for name joins
-    const voterIds = Array.from(new Set(merged.map(v => v.voterId).filter(Boolean)));
-    const usedCommunityIds = Array.from(new Set(merged.map(v => v.communityId).filter(Boolean)));
+    const voterIds = Array.from(new Set(window.map(v => v.voterId).filter(Boolean)));
+    const usedCommunityIds = Array.from(new Set(window.map(v => v.communityId).filter(Boolean)));
 
     // 5) Fetch users and communities in batches
     const userDocs = await Promise.all(
@@ -105,7 +90,7 @@ async function aggregateCommunityVotesForUser(userId, options = {}) {
 
     // 6) Decorate items and compute counts
     const counts = { red: 0, green: 0, unknown: 0, total: 0 };
-    const items = merged.map(v => {
+    const items = window.map(v => {
       const label = v.label === 'red' || v.label === 'green' ? v.label : 'unknown';
       counts[label] += 1;
       counts.total += 1;

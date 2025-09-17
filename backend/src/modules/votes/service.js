@@ -1,5 +1,5 @@
 const { db } = require('../../../lib/firebase');
-const { computeHotScore } = require('../../lib/ranking');
+const { calculateHotScore } = require('../../lib/ranking');
 const { createModuleLogger } = require('../../lib/logger');
 
 
@@ -31,6 +31,14 @@ async function voteOnPost(postId, userId, value) {
       }
 
       const postData = postDoc.data();
+      // Ensure numeric counters exist to avoid NaN operations
+      const safePostData = {
+        ...postData,
+        upvotes: typeof postData.upvotes === 'number' ? postData.upvotes : 0,
+        downvotes: typeof postData.downvotes === 'number' ? postData.downvotes : 0,
+        score: typeof postData.score === 'number' ? postData.score : 0,
+        createdAt: postData.createdAt,
+      };
 
       // Get current user vote
       const voteDoc = await transaction.get(voteRef);
@@ -80,10 +88,14 @@ async function voteOnPost(postId, userId, value) {
       }
 
       // Calculate new counters
-      const newUpvotes = postData.upvotes + upvoteChange;
-      const newDownvotes = postData.downvotes + downvoteChange;
+      const newUpvotes = safePostData.upvotes + upvoteChange;
+      const newDownvotes = safePostData.downvotes + downvoteChange;
       const newScore = newUpvotes - newDownvotes;
-      const newHotScore = computeHotScore(postData.createdAt, newScore);
+      // Compute hot score using a JS Date; Firestore Timestamp needs conversion
+      const createdAtDate = safePostData.createdAt && typeof safePostData.createdAt.toDate === 'function'
+        ? safePostData.createdAt.toDate()
+        : (safePostData.createdAt instanceof Date ? safePostData.createdAt : new Date());
+      const newHotScore = calculateHotScore(newUpvotes, newDownvotes, createdAtDate);
 
       // Update post document
       const updateData = {
@@ -107,7 +119,7 @@ async function voteOnPost(postId, userId, value) {
 
       // Return updated post data
       return {
-        ...postData,
+        ...safePostData,
         ...updateData,
         userVote: value === 0 ? null : value,
       };
@@ -153,6 +165,12 @@ async function voteOnComment(commentId, userId, value) {
       }
 
       const commentData = commentDoc.data();
+      const safeCommentData = {
+        ...commentData,
+        upvotes: typeof commentData.upvotes === 'number' ? commentData.upvotes : 0,
+        downvotes: typeof commentData.downvotes === 'number' ? commentData.downvotes : 0,
+        score: typeof commentData.score === 'number' ? commentData.score : 0,
+      };
 
       // Get current user vote
       const voteDoc = await transaction.get(voteRef);
@@ -202,8 +220,8 @@ async function voteOnComment(commentId, userId, value) {
       }
 
       // Calculate new counters
-      const newUpvotes = commentData.upvotes + upvoteChange;
-      const newDownvotes = commentData.downvotes + downvoteChange;
+      const newUpvotes = safeCommentData.upvotes + upvoteChange;
+      const newDownvotes = safeCommentData.downvotes + downvoteChange;
       const newScore = newUpvotes - newDownvotes;
 
       // Update comment document
@@ -218,7 +236,7 @@ async function voteOnComment(commentId, userId, value) {
 
       // Return updated comment data
       return {
-        ...commentData,
+        ...safeCommentData,
         ...updateData,
         userVote: value === 0 ? null : value,
         postId: commentData.postId,

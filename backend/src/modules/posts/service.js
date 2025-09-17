@@ -1,4 +1,5 @@
 const { db } = require('../../../lib/firebase');
+const admin = require('firebase-admin');
 const { createModuleLogger } = require('../../lib/logger');
 const { computeHotScore } = require('../../lib/ranking');
 const { caches } = require('../../lib/cache');
@@ -102,23 +103,43 @@ async function createPost(postData, userId, userNickname) {
       }
     }
 
-    // Validate media if present
-    if (postData.mediaDescriptors && postData.mediaDescriptors.length > 0) {
+    // Validate media if present (either descriptors for pre-sign or direct media array)
+    const mediaArray = postData.media || postData.mediaDescriptors || [];
+    if (mediaArray.length > 0) {
       logger.info('Validating media', { 
-        mediaCount: postData.mediaDescriptors.length,
-        mediaTypes: postData.mediaDescriptors.map(m => m.type)
+        mediaCount: mediaArray.length,
+        mediaTypes: mediaArray.map(m => m.type)
       });
 
-      for (const media of postData.mediaDescriptors) {
-        const validation = validateMedia(media.mime, media.size, media.type);
-        if (!validation.isValid) {
-          logger.error('Media validation failed', { 
-            media, 
-            validationError: validation.error 
-          });
-          throw new Error(`Media validation failed: ${validation.error}`);
+      for (const media of mediaArray) {
+        // For direct media URLs, skip detailed validation
+        if (media.url && !media.mime) {
+          if (!media.type || !['image', 'audio'].includes(media.type)) {
+            throw new Error('Invalid media type. Must be image or audio');
+          }
+          if (media.type === 'audio' && !features.voicePosts) {
+            throw new Error('Voice posts are currently disabled');
+          }
+        } else {
+          // For mediaDescriptors with mime/size, do full validation
+          const validation = validateMedia(media.mime, media.size, media.type);
+          if (!validation.isValid) {
+            logger.error('Media validation failed', { 
+              media, 
+              validationError: validation.error 
+            });
+            throw new Error(`Media validation failed: ${validation.error}`);
+          }
         }
       }
+    }
+
+    // Normalize media list from either mediaDescriptors (pre-upload intent) or media (final URLs)
+    let normalizedMedia = [];
+    if (Array.isArray(mediaArray) && mediaArray.length > 0) {
+      normalizedMedia = mediaArray
+        .filter(m => m && typeof m.url === 'string')
+        .map(m => ({ url: m.url, type: m.type || 'image' }));
     }
 
     // Create post document
@@ -141,7 +162,7 @@ async function createPost(postData, userId, userNickname) {
       authorNickname: userNickname,
       title: postData.title,
       body: postData.body,
-      media: postData.mediaDescriptors || [],
+      media: normalizedMedia,
       tags: postData.tags || [],
       visibility: postData.visibility === 'community' && postData.communityId ? 'community' : 'public',
       createdAt: new Date(),
@@ -389,34 +410,175 @@ async function deletePost(postId, userId) {
 
     const post = postDoc.data();
 
-    // Check permissions (author or community mod/owner)
-    const communityDoc = await db.collection('communities').doc(post.communityId).get();
-    if (!communityDoc.exists) {
+    // Permission: author always; if community post, allow owner/mods
+    let canDelete = post.authorId === userId;
+    let community = null;
+    if (post.communityId) {
+      const communitySnap = await db.collection('communities').doc(post.communityId).get();
+      if (!communitySnap.exists) {
       throw new Error('Community not found');
+      }
+      community = communitySnap.data();
+      const moderators = Array.isArray(community.modIds) ? community.modIds : [];
+      canDelete = canDelete || community.ownerId === userId || moderators.includes(userId);
     }
-
-    const community = communityDoc.data();
-    const canDelete =
-      post.authorId === userId || community.ownerId === userId || community.modIds.includes(userId);
 
     if (!canDelete) {
       throw new Error('Insufficient permissions to delete this post');
     }
 
-    // Soft delete
+    // 1) Soft delete post document (preserve auditability)
     await postRef.update({
       isDeleted: true,
       body: '[deleted]',
       updatedAt: new Date(),
+      lastActivityAt: new Date(),
     });
 
-    logger.info('Post deleted successfully', {
-      postId,
-      deletedBy: userId,
-    });
+    // 2) Cascade delete: post votes (subcollection)
+    try {
+      const votesSnap = await postRef.collection('votes').get();
+      if (!votesSnap.empty) {
+        const batch = db.batch();
+        votesSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      logger.warn('Failed to remove post votes subcollection (continuing)', { postId, error: e.message });
+    }
+
+    // 3) Cascade delete: top-level likes and saves referencing this post
+    try {
+      const [likesSnap, savesSnap] = await Promise.all([
+        db.collection('likes').where('postId', '==', postId).get(),
+        db.collection('saves').where('postId', '==', postId).get(),
+      ]);
+      if (!likesSnap.empty) {
+        const batch = db.batch();
+        likesSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      if (!savesSnap.empty) {
+        const batch = db.batch();
+        savesSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      logger.warn('Failed to remove likes/saves for post (continuing)', { postId, error: e.message });
+    }
+
+    // 4) Cascade delete: comments and their replies + votes for each comment
+    try {
+      const commentsSnap = await db
+        .collection('comments')
+        .where('postId', '==', postId)
+        .where('isDeleted', '==', false)
+        .get();
+
+      if (!commentsSnap.empty) {
+        // Soft delete comments in batches and clear their votes
+        const now = new Date();
+        const updates = [];
+        for (const doc of commentsSnap.docs) {
+          updates.push(doc.ref.update({ isDeleted: true, body: '[deleted]', updatedAt: now }));
+          try {
+            const votes = await doc.ref.collection('votes').get();
+            if (!votes.empty) {
+              const batch = db.batch();
+              votes.docs.forEach(v => batch.delete(v.ref));
+              await batch.commit();
+            }
+          } catch (e) {
+            logger.warn('Failed to remove votes for comment (continuing)', { commentId: doc.id, error: e.message });
+          }
+        }
+        await Promise.allSettled(updates);
+        // Reset comment count
+        try {
+          await postRef.update({ commentCount: 0, updatedAt: new Date() });
+        } catch (_) {}
+      }
+    } catch (e) {
+      logger.warn('Failed to cascade-delete comments for post (continuing)', { postId, error: e.message });
+    }
+
+    // 5) Delete media files (best-effort)
+    try {
+      const { getProvider } = require('../../lib/storageProvider');
+      const provider = getProvider();
+      const mediaList = Array.isArray(post.media) ? post.media : [];
+
+      function extractObjectPathFromUrl(url) {
+        try {
+          if (!url || typeof url !== 'string') return null;
+          // Cloudinary: https://res.cloudinary.com/<cloud>/.../upload/.../<publicId>.<ext>
+          if (url.includes('res.cloudinary.com')) {
+            const idx = url.indexOf('/upload/');
+            if (idx !== -1) {
+              const after = url.substring(idx + '/upload/'.length);
+              // Remove version prefix like v12345/
+              const parts = after.split('/');
+              const maybeVersion = parts[0];
+              const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+              const pathParts = parts.slice(startIndex);
+              const last = pathParts.pop() || '';
+              const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+              const publicId = [...pathParts, withoutExt].join('/');
+              return publicId || null;
+            }
+          }
+          // Firebase Storage public URL: https://storage.googleapis.com/<bucket>/<path>
+          if (url.includes('storage.googleapis.com')) {
+            const u = new URL(url);
+            const segments = u.pathname.split('/').filter(Boolean);
+            // segments[0] is bucket name, rest is object path
+            if (segments.length >= 2) {
+              return decodeURIComponent(segments.slice(1).join('/'));
+            }
+          }
+          // gs://<bucket>/<path>
+          if (url.startsWith('gs://')) {
+            const pathStart = url.indexOf('/', 'gs://'.length);
+            if (pathStart > 0) return url.substring(pathStart + 1);
+          }
+          return null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      const deletions = [];
+      for (const m of mediaList) {
+        const objectPath = extractObjectPathFromUrl(m.url);
+        if (objectPath) {
+          deletions.push(provider.deleteFile(objectPath).catch(() => false));
+        }
+      }
+      if (deletions.length > 0) {
+        await Promise.allSettled(deletions);
+      }
+    } catch (e) {
+      logger.warn('Failed to delete post media files (continuing)', { postId, error: e.message });
+    }
+
+    // 6) Decrement community post count if applicable
+    try {
+      if (post.communityId && community) {
+        await db
+          .collection('communities')
+          .doc(post.communityId)
+          .update({ postCount: admin.firestore.FieldValue.increment(-1), updatedAt: new Date() });
+      }
+    } catch (e) {
+      logger.warn('Failed to decrement community postCount (continuing)', { postId, error: e.message });
+    }
+
+    logger.info('Post deleted successfully with cascade', { postId, deletedBy: userId });
 
     // Invalidate caches related to this community and home feed
+    if (post.communityId) {
     caches.posts.deleteByPrefix(`community:${post.communityId}:`);
+    }
     caches.posts.deleteByPrefix('home:');
     return true;
   } catch (error) {
@@ -450,49 +612,23 @@ async function getHomeFeed(userId, options = {}) {
     const followedUserIds = followsQuery.empty ? [] : followsQuery.docs.map(doc => doc.data().followedId);
 
     // Build query: posts from joined communities OR public posts from followed users
-    let query = db.collection('posts').where('isDeleted', '==', false);
+    const baseQuery = db.collection('posts').where('isDeleted', '==', false);
 
     // Firestore OR requires composite strategies; we'll do two queries and merge
     const queries = [];
 
     if (communityIds.length > 0) {
-      let q = query.where('communityId', 'in', communityIds);
+      let q = baseQuery.where('communityId', 'in', communityIds);
       queries.push(q);
     }
 
     if (followedUserIds.length > 0) {
-      let q = query.where('authorId', 'in', followedUserIds).where('visibility', '==', 'public');
+      let q = baseQuery.where('authorId', 'in', followedUserIds).where('visibility', '==', 'public');
       queries.push(q);
     }
 
     if (queries.length === 0) {
       return { posts: [], pagination: { pageSize, hasMore: false, nextCursor: null } };
-    }
-
-    switch (sort) {
-      case 'hot':
-        query = query.orderBy('hotScore', 'desc');
-        break;
-      case 'new':
-        query = query.orderBy('createdAt', 'desc');
-        break;
-      case 'top_24h': {
-        // Note: This requires a composite index on (createdAt ASC, score DESC)
-        // For now, we'll order by score and filter in memory
-        query = query.orderBy('score', 'desc');
-        break;
-      }
-      case 'top_7d': {
-        // Note: This requires a composite index on (createdAt ASC, score DESC)
-        // For now, we'll order by score and filter in memory
-        query = query.orderBy('score', 'desc');
-        break;
-      }
-      case 'top_all':
-        query = query.orderBy('score', 'desc');
-        break;
-      default:
-        query = query.orderBy('createdAt', 'desc');
     }
 
     // Execute sub-queries
@@ -544,7 +680,6 @@ async function getHomeFeed(userId, options = {}) {
         nextCursor,
       },
     };
-    caches.posts.set(cacheKey, result);
     return result;
   } catch (error) {
     logger.error('Failed to get home feed', {
@@ -565,10 +700,10 @@ async function getHomeFeed(userId, options = {}) {
  */
 async function getCommunityPosts(communityId, options = {}) {
   try {
+    const { sort = 'hot', pageSize = 20, cursor = null } = options;
     const cacheKey = `community:${communityId}:${sort}:${pageSize}:${cursor || 'start'}`;
     const cached = caches.posts.get(cacheKey);
     if (cached) return cached;
-    const { sort = 'hot', pageSize = 20, cursor = null } = options;
 
     // Check if community exists
     const communityDoc = await db.collection('communities').doc(communityId).get();
@@ -576,36 +711,14 @@ async function getCommunityPosts(communityId, options = {}) {
       throw new Error('Community not found');
     }
 
-    // Build query
+    // Build query - simplified to avoid Firestore index issues
     let query = db
       .collection('posts')
       .where('communityId', '==', communityId)
       .where('isDeleted', '==', false);
 
-    switch (sort) {
-      case 'hot':
-        query = query.orderBy('hotScore', 'desc');
-        break;
-      case 'new':
-        query = query.orderBy('createdAt', 'desc');
-        break;
-      case 'top_24h': {
-        // Note: This requires a composite index on (createdAt ASC, score DESC)
-        // For now, we'll order by score and filter in memory
-        query = query.orderBy('score', 'desc');
-        break;
-      }
-      case 'top_7d': {
-        // Note: This requires a composite index on (createdAt ASC, score DESC)
-        // For now, we'll order by score and filter in memory
-        break;
-      }
-      case 'top_all':
-        query = query.orderBy('score', 'desc');
-        break;
-      default:
-        query = query.orderBy('createdAt', 'desc');
-    }
+    // For now, we'll fetch without ordering and sort in memory to avoid index issues
+    // This is a temporary solution until proper composite indexes are created
 
     // Apply pagination
     if (cursor) {
@@ -623,7 +736,7 @@ async function getCommunityPosts(communityId, options = {}) {
     query = query.limit(pageSize);
 
     const snapshot = await query.get();
-    const posts = [];
+    let posts = [];
 
     snapshot.forEach(doc => {
       posts.push({
@@ -631,6 +744,23 @@ async function getCommunityPosts(communityId, options = {}) {
         ...doc.data(),
       });
     });
+
+    // Sort in-memory per sort param
+    switch (sort) {
+      case 'hot':
+        posts.sort((a, b) => (b.hotScore || 0) - (a.hotScore || 0));
+        break;
+      case 'new':
+        posts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        break;
+      case 'top_24h':
+      case 'top_7d':
+      case 'top_all':
+        posts.sort((a, b) => (b.score || 0) - (a.score || 0));
+        break;
+      default:
+        posts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    }
 
     // Generate next cursor
     let nextCursor = null;
@@ -778,7 +908,7 @@ async function updateCommentCount(postId, change) {
     const postRef = db.collection('posts').doc(postId);
 
     await postRef.update({
-      commentCount: db.FieldValue.increment(change),
+      commentCount: admin.firestore.FieldValue.increment(change),
       lastActivityAt: new Date(),
       updatedAt: new Date(),
     });

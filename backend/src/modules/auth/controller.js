@@ -5,6 +5,8 @@ const { createError, ErrorCodes } = require('../../middlewares/error');
 const { sendEmail } = require('../../lib/mail');
 const { createAuditLog } = require('../audit/service');
 const { v4: uuidv4 } = require('uuid');
+const https = require('https');
+const { URL } = require('url');
 
 /**
  * Register new user with email and password
@@ -26,7 +28,7 @@ async function registerWithEmail(req, res) {
     });
   }
 
-  const { email, password, nickname } = req.body;
+  const { email, password, nickname, avatarUrl, media } = req.body;
 
   try {
     const auth = getAuth();
@@ -83,6 +85,7 @@ async function registerWithEmail(req, res) {
       uid: userRecord.uid,
       email,
       nickname,
+      avatarUrl: avatarUrl || (media && media.length > 0 ? media[0].url : null),
       status: 'active',
       genderVerificationStatus: 'pending',
       kycProvider: 'none',
@@ -139,6 +142,7 @@ async function registerWithEmail(req, res) {
       metadata: {
         method: 'email',
         nickname,
+        avatarUrl: avatarUrl || null,
       },
     });
 
@@ -186,6 +190,70 @@ async function registerWithEmail(req, res) {
         message: 'Failed to create account',
       },
     });
+  }
+}
+
+/**
+ * Refresh ID token using Firebase Secure Token API
+ * Body: { refreshToken: string }
+ * Returns: { idToken, refreshToken, expiresIn, tokenExpiresAt, sessionStartedAt }
+ */
+async function refreshWithToken(req, res) {
+  try {
+    const { refreshToken } = req.body || {};
+    if (!refreshToken) {
+      return res.status(400).json({ ok: false, error: { code: 'MISSING_REFRESH_TOKEN', message: 'refreshToken is required' } });
+    }
+    const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.GOOGLE_FIREBASE_WEB_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ ok: false, error: { code: 'MISSING_API_KEY', message: 'FIREBASE_WEB_API_KEY not configured' } });
+    }
+
+    const url = new URL(`https://securetoken.googleapis.com/v1/token?key=${apiKey}`);
+    const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }).toString();
+
+    const result = await new Promise((resolve, reject) => {
+      const reqOpts = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      };
+      const r = https.request(url, reqOpts, (resp) => {
+        let data = '';
+        resp.on('data', (chunk) => (data += chunk));
+        resp.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (resp.statusCode && resp.statusCode >= 200 && resp.statusCode < 300) {
+              resolve(json);
+            } else {
+              reject(new Error(json?.error?.message || 'TOKEN_REFRESH_FAILED'));
+            }
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      r.on('error', reject);
+      r.write(body);
+      r.end();
+    });
+
+    const nowMs = Date.now();
+    const expiresInSec = parseInt(result.expires_in || '3600', 10);
+    const response = {
+      idToken: result.id_token,
+      refreshToken: result.refresh_token || refreshToken,
+      expiresIn: expiresInSec,
+      sessionStartedAt: Math.floor(nowMs / 1000),
+      tokenExpiresAt: Math.floor(nowMs / 1000) + expiresInSec,
+    };
+
+    return res.json({ ok: true, data: response });
+  } catch (error) {
+    return res.status(401).json({ ok: false, error: { code: 'TOKEN_REFRESH_FAILED', message: error.message || 'Failed to refresh token' } });
   }
 }
 
@@ -635,4 +703,5 @@ module.exports = {
   setupMfa,
   verifyMfa,
   disableMfa,
+  refreshWithToken,
 };

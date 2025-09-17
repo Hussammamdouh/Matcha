@@ -22,6 +22,7 @@ const {
   leaveConversation,
   updateConversation,
   toggleMute,
+  deleteConversation,
 } = require('./controller');
 
 const router = express.Router();
@@ -300,6 +301,14 @@ router.post(
   toggleMuteValidation,
   validate,
   toggleMute
+);
+
+// Delete conversation (owner/admin)
+router.delete(
+  '/:id',
+  getConversationValidation,
+  validate,
+  deleteConversation
 );
 
 module.exports = router;

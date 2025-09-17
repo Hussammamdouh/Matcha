@@ -2,6 +2,7 @@ const express = require('express');
 const { authenticateToken } = require('../../middlewares/auth');
 const { generalRateLimiter } = require('../../middlewares/rateLimit');
 const { getAggregatedReviews, createReview, getReview, voteOnReview, listReviewComments, addReviewComment } = require('./controller');
+const directUpload = require('../../middlewares/directUpload');
 const { getAggregatedReviewsValidation } = require('./validators');
 const validate = require('../../middlewares/validation').validateQuery;
 
@@ -18,7 +19,14 @@ router.get(
 );
 
 // POST /api/v1/reviews
-router.post('/', authenticateToken, generalRateLimiter, createReview);
+// Accept direct multipart uploads similar to posts/comments
+router.post(
+  '/',
+  authenticateToken,
+  generalRateLimiter,
+  directUpload({ namespace: 'men-reviews' }),
+  createReview
+);
 
 // GET /api/v1/reviews/:id
 router.get('/:id', authenticateToken, generalRateLimiter, getReview);

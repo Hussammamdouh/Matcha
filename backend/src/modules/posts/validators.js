@@ -32,6 +32,28 @@ const createPostValidation = [
     .withMessage('Post body must be between 1 and 10,000 characters')
     .customSanitizer(value => sanitizeHtml(value)),
 
+  body('media')
+    .optional()
+    .isArray({ max: 5 })
+    .withMessage('Maximum 5 media files allowed'),
+
+  body('media.*.type')
+    .optional()
+    .isIn(['image', 'audio'])
+    .withMessage('Media type must be either "image" or "audio"')
+    .custom(value => {
+      if (value === 'audio' && !features.voicePosts) {
+        throw new Error('Voice posts are currently disabled');
+      }
+      return value;
+    }),
+
+  body('media.*.url')
+    .optional()
+    .isURL()
+    .withMessage('Media URL must be a valid URL'),
+
+  // Legacy support for mediaDescriptors
   body('mediaDescriptors')
     .optional()
     .isArray({ max: 5 })
@@ -57,6 +79,7 @@ const createPostValidation = [
     .optional()
     .isInt({ min: 1 })
     .withMessage('File size must be a positive integer'),
+
 
   body('tags').optional().isArray({ max: 10 }).withMessage('Maximum 10 tags allowed'),
 

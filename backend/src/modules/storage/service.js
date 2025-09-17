@@ -1,9 +1,6 @@
-const { getStorage } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../lib/logger');
 const { validateMedia } = require('../../lib/storage');
-
-const storage = getStorage();
-const bucket = storage.bucket();
+const { getProvider } = require('../../lib/storageProvider');
 const logger = createModuleLogger();
 
 /**
@@ -21,14 +18,8 @@ async function generateUploadUrl(filePath, contentType, expiresIn = 3600) {
       throw new Error(`Invalid file: ${validation.error}`);
     }
 
-    const file = bucket.file(filePath);
-
-    // Generate signed URL for upload
-    const [url] = await file.getSignedUrl({
-      action: 'write',
-      contentType,
-      expires: Date.now() + expiresIn * 1000,
-    });
+    const provider = getProvider();
+    const result = await provider.generateUploadUrl(filePath, contentType, expiresIn);
 
     logger.info('Upload URL generated', {
       filePath,
@@ -36,12 +27,7 @@ async function generateUploadUrl(filePath, contentType, expiresIn = 3600) {
       expiresIn,
     });
 
-    return {
-      uploadUrl: url,
-      filePath,
-      contentType,
-      expiresAt: new Date(Date.now() + expiresIn * 1000),
-    };
+    return result;
   } catch (error) {
     logger.error('Failed to generate upload URL', {
       error: error.message,
@@ -60,22 +46,8 @@ async function generateUploadUrl(filePath, contentType, expiresIn = 3600) {
  */
 async function generateDownloadUrl(filePath, expiresIn = 3600) {
   try {
-    const file = bucket.file(filePath);
-
-    // Check if file exists
-    const [exists] = await file.exists();
-    if (!exists) {
-      throw new Error('File not found');
-    }
-
-    // Generate signed URL for download
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + expiresIn * 1000,
-    });
-
-    // Get file metadata
-    const [metadata] = await file.getMetadata();
+    const provider = getProvider();
+    const { downloadUrl: url, contentType, size, expiresAt } = await provider.generateDownloadUrl(filePath, expiresIn);
 
     logger.info('Download URL generated', {
       filePath,
@@ -86,9 +58,9 @@ async function generateDownloadUrl(filePath, expiresIn = 3600) {
     return {
       downloadUrl: url,
       filePath,
-      contentType: metadata.contentType,
-      size: metadata.size,
-      expiresAt: new Date(Date.now() + expiresIn * 1000),
+      contentType,
+      size,
+      expiresAt,
     };
   } catch (error) {
     logger.error('Failed to generate download URL', {
@@ -106,21 +78,12 @@ async function generateDownloadUrl(filePath, expiresIn = 3600) {
  */
 async function deleteFile(filePath) {
   try {
-    const file = bucket.file(filePath);
-
-    // Check if file exists
-    const [exists] = await file.exists();
-    if (!exists) {
-      logger.warn('File not found for deletion', { filePath });
-      return false;
-    }
-
-    // Delete the file
-    await file.delete();
+    const provider = getProvider();
+    const deleted = await provider.deleteFile(filePath);
 
     logger.info('File deleted successfully', { filePath });
 
-    return true;
+    return deleted;
   } catch (error) {
     logger.error('Failed to delete file', {
       error: error.message,
@@ -137,16 +100,9 @@ async function deleteFile(filePath) {
  */
 async function getFileMetadata(filePath) {
   try {
-    const file = bucket.file(filePath);
-
-    // Check if file exists
-    const [exists] = await file.exists();
-    if (!exists) {
-      throw new Error('File not found');
-    }
-
-    // Get file metadata
-    const [metadata] = await file.getMetadata();
+    const provider = getProvider();
+    const metadata = await provider.getFileMetadata(filePath);
+    if (!metadata) throw new Error('File not found');
 
     logger.info('File metadata retrieved', {
       filePath,
@@ -158,8 +114,8 @@ async function getFileMetadata(filePath) {
       filePath,
       contentType: metadata.contentType,
       size: metadata.size,
-      createdAt: metadata.timeCreated,
-      updatedAt: metadata.updated,
+      createdAt: metadata.createdAt,
+      updatedAt: metadata.updatedAt,
       md5Hash: metadata.md5Hash,
     };
   } catch (error) {
@@ -178,9 +134,8 @@ async function getFileMetadata(filePath) {
  */
 async function fileExists(filePath) {
   try {
-    const file = bucket.file(filePath);
-    const [exists] = await file.exists();
-    return exists;
+    const provider = getProvider();
+    return await provider.fileExists(filePath);
   } catch (error) {
     logger.error('Failed to check file existence', {
       error: error.message,
@@ -197,9 +152,8 @@ async function fileExists(filePath) {
  */
 async function getFileSize(filePath) {
   try {
-    const file = bucket.file(filePath);
-    const [metadata] = await file.getMetadata();
-    return parseInt(metadata.size);
+    const provider = getProvider();
+    return await provider.getFileSize(filePath);
   } catch (error) {
     logger.error('Failed to get file size', {
       error: error.message,
@@ -220,20 +174,8 @@ async function getFileSize(filePath) {
 async function listFiles(directory, options = {}) {
   try {
     const { maxResults = 1000, pageToken } = options;
-
-    const [files, nextPageToken] = await bucket.getFiles({
-      prefix: directory,
-      maxResults,
-      pageToken,
-    });
-
-    const fileList = files.map(file => ({
-      name: file.name,
-      size: file.metadata?.size,
-      contentType: file.metadata?.contentType,
-      createdAt: file.metadata?.timeCreated,
-      updatedAt: file.metadata?.updated,
-    }));
+    const provider = getProvider();
+    const { files: fileList, nextPageToken } = await provider.listFiles(directory, { maxResults, pageToken });
 
     logger.info('Files listed successfully', {
       directory,

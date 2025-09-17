@@ -18,7 +18,10 @@ const {
   joinCommunity,
   leaveCommunity,
   getModerators,
+  deleteCommunity,
 } = require('./controller');
+const postsController = require('../posts/controller');
+const { getCommunityPostsValidation, validate: postsValidate } = require('../posts/validators');
 const {
   getModerators: getModeratorsDetailed,
   addModerator,
@@ -27,6 +30,7 @@ const {
   unbanUser,
   getBannedUsers,
 } = require('./moderation.controller');
+const { listMembers } = require('./controller');
 const {
   addModeratorValidation,
   banUserValidation,
@@ -149,6 +153,28 @@ router.post(
 
 // Get community moderators (public)
 router.get('/:id/moderators', getModeratorsValidation, validate, getModerators);
+// List members
+router.get('/:id/members', validate, listMembers);
+
+// Community posts for community page
+router.get(
+  '/:communityId/posts',
+  authenticateToken,
+  generalRateLimiter,
+  getCommunityPostsValidation,
+  postsValidate,
+  postsController.getCommunityPosts
+);
+
+// Delete community (owner or admin)
+router.delete(
+  '/:id',
+  authenticateToken,
+  generalRateLimiter,
+  getCommunityValidation,
+  validate,
+  deleteCommunity
+);
 
 // Moderation Routes
 /**

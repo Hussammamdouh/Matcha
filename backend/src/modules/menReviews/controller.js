@@ -53,6 +53,8 @@ async function createReview(req, res) {
       targetId: targetId || null,
       label,
       comment: comment || null,
+      // If directUpload ran, it may have set req.body.media = [{ url, type }]
+      media: Array.isArray(req.body?.media) ? req.body.media : [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };

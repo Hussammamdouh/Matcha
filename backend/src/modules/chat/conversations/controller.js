@@ -339,6 +339,37 @@ async function toggleMute(req, res) {
   }
 }
 
+/**
+ * Delete a conversation (owner or admin) or participant when policy allows
+ * DELETE /api/v1/chat/conversations/:id
+ */
+async function deleteConversation(req, res) {
+  try {
+    const { id } = req.params;
+    const userId = req.user.uid;
+
+    await conversationsService.deleteConversation(id, userId);
+
+    res.json({ ok: true, data: { success: true } });
+  } catch (error) {
+    logger.error('Failed to delete conversation', {
+      error: error.message,
+      conversationId: req.params.id,
+      userId: req.user.uid,
+    });
+
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'Conversation not found' } });
+    }
+
+    if (error.message.includes('Insufficient permissions')) {
+      return res.status(403).json({ ok: false, error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
+    }
+
+    return res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to delete conversation' } });
+  }
+}
+
 module.exports = {
   createConversation,
   getConversation,
@@ -347,4 +378,5 @@ module.exports = {
   leaveConversation,
   updateConversation,
   toggleMute,
+  deleteConversation,
 };

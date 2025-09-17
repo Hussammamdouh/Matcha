@@ -89,6 +89,11 @@ const router = express.Router();
  *         description: Authentication required
  */
 router.get('/', authenticateToken, asyncHandler(userController.getProfile));
+// Public user endpoints with privacy
+router.get('/:id', authenticateToken, asyncHandler(userController.getPublicProfile));
+router.get('/:id/likes', authenticateToken, asyncHandler(userController.getUserLikedPosts));
+router.get('/:id/followers', authenticateToken, asyncHandler(userController.getUserFollowers));
+router.get('/:id/following', authenticateToken, asyncHandler(userController.getUserFollowing));
 router.get('/stats', authenticateToken, asyncHandler(userController.getMyStatsAndPosts));
 router.get('/likes', authenticateToken, asyncHandler(userController.getMyLikedPosts));
 router.get('/saves', authenticateToken, asyncHandler(postsController.getSavedPosts));
@@ -124,9 +129,11 @@ router.delete('/block/:blockedUserId', authenticateToken, asyncHandler(blocksCon
  *       401:
  *         description: Authentication required
  */
+const directUpload = require('../../middlewares/directUpload');
 router.patch(
   '/',
   authenticateToken,
+  directUpload({ namespace: 'profile' }),
   [
     body('nickname')
       .optional()

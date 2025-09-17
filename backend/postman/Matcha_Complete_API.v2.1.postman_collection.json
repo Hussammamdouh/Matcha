@@ -7,20 +7,35 @@
     "version": "2.1.0"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://matcha-backend-h47.fly.dev", "type": "string" },
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
     { "key": "authToken", "value": "your_firebase_id_token_here", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "sessionStartedAt", "value": "0", "type": "string" },
+    { "key": "tokenExpiresAt", "value": "0", "type": "string" },
     { "key": "adminToken", "value": "your_admin_firebase_id_token_here", "type": "string" },
     { "key": "userId", "value": "user_id_here", "type": "string" },
     { "key": "postId", "value": "post_id_here", "type": "string" },
     { "key": "commentId", "value": "comment_id_here", "type": "string" },
     { "key": "communityId", "value": "community_id_here", "type": "string" },
     { "key": "conversationId", "value": "conversation_id_here", "type": "string" },
+    { "key": "messageId", "value": "message_id_here", "type": "string" },
     { "key": "deviceId", "value": "device_id_here", "type": "string" },
     { "key": "reportId", "value": "report_id_here", "type": "string" },
     { "key": "exportJobId", "value": "export_job_id_here", "type": "string" },
-    { "key": "reviewId", "value": "review_id_here", "type": "string" }
+    { "key": "reviewId", "value": "review_id_here", "type": "string" },
+    { "key": "uploadedUrl", "value": "", "type": "string" },
+    { "key": "cloudName", "value": "dh3rzxbdh", "type": "string" }
   ],
   "item": [
+    {
+      "name": "Storage",
+      "description": "Storage signing and proxy endpoints",
+      "item": [
+        { "name": "Generate Upload URL", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"}, {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"filePath\": \"posts/{{postId}}/media/test.jpg\",\n  \"contentType\": \"image/jpeg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/storage/upload-url", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","upload-url"] } } },
+        { "name": "Chat Sign Upload", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"}, {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"conversationId\": \"{{conversationId}}\",\n  \"type\": \"image\",\n  \"mime\": \"image/jpeg\",\n  \"size\": 10240\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/storage/chat/sign", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","chat","sign"] } } },
+        { "name": "Proxy Upload (Cloudinary)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "body": { "mode": "formdata", "formdata": [ { "key": "file", "type": "file", "src": "./Screenshot (314).png" }, { "key": "public_id", "value": "posts/{{postId}}/media/screenshot-314.png", "type": "text" }, { "key": "resource_type", "value": "image", "type": "text" } ] }, "url": { "raw": "{{baseUrl}}/api/v1/storage/proxy/upload", "host": ["{{baseUrl}}"], "path": ["api","v1","storage","proxy","upload"] } }, "event": [ { "listen": "test", "script": { "exec": [ "// Save uploaded url to use in create post/comment bodies", "let res = {};", "try { res = pm.response.json(); } catch (e) {}", "if (res && res.ok && res.data && res.data.url) { pm.collectionVariables.set('uploadedUrl', res.data.url); }" ] } } ] }
+      ]
+    },
     {
       "name": "Health & Status",
       "description": "Operational endpoints to check service health, readiness for dependencies, and basic metrics. Useful for monitoring and troubleshooting.",
@@ -46,7 +61,9 @@
       "description": "Auth lifecycle including email/password registration, login, OAuth providers, and multi-factor operations.",
       "item": [
         { "name": "Register with Email", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"nickname\": \"testuser\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/register-email", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","register-email"] } } },
-        { "name": "Login with Email", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] } } },
+        { "name": "Register with Email - Direct Upload", "request": { "method": "POST", "header": [], "body": { "mode": "formdata", "formdata": [ { "key": "email", "value": "user@example.com", "type": "text" }, { "key": "password", "value": "password123", "type": "text" }, { "key": "nickname", "value": "testuser", "type": "text" }, { "key": "file", "type": "file", "src": "./Screenshot (314).png" } ] }, "url": { "raw": "{{baseUrl}}/api/v1/auth/register-email", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","register-email"] } } },
+        { "name": "Login with Email", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","login"] } }, "event": [ { "listen": "test", "script": { "exec": [ "// Capture tokens and session timing", "let json = {};", "try { json = pm.response.json(); } catch (e) {}", "if (json && json.data) {", "  if (json.data.idToken) pm.collectionVariables.set('authToken', json.data.idToken);", "  if (json.data.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);", "  if (json.data.sessionStartedAt !== undefined) pm.collectionVariables.set('sessionStartedAt', json.data.sessionStartedAt);", "  if (json.data.tokenExpiresAt !== undefined) pm.collectionVariables.set('tokenExpiresAt', json.data.tokenExpiresAt);", "}", "// Inform about httpOnly cookie", "pm.test('Login sets httpOnly refreshToken cookie', function () {", "  const cookies = pm.response.cookies.getAll();", "  pm.expect(Array.isArray(cookies)).to.be.true;", "});" ] } } ] },
+        { "name": "Refresh Token", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","refresh"] } }, "event": [ { "listen": "test", "script": { "exec": [ "let json = {};", "try { json = pm.response.json(); } catch (e) {}", "if (json && json.data) {", "  if (json.data.idToken) pm.collectionVariables.set('authToken', json.data.idToken);", "  if (json.data.refreshToken) pm.collectionVariables.set('refreshToken', json.data.refreshToken);", "  if (json.data.sessionStartedAt !== undefined) pm.collectionVariables.set('sessionStartedAt', json.data.sessionStartedAt);", "  if (json.data.tokenExpiresAt !== undefined) pm.collectionVariables.set('tokenExpiresAt', json.data.tokenExpiresAt);", "}" ] } } ] },
         { "name": "Google OAuth", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"idToken\": \"google_id_token_here\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/oauth/google", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","oauth","google"] } } },
         { "name": "Apple OAuth", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"idToken\": \"apple_id_token_here\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/oauth/apple", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","oauth","apple"] } } },
         { "name": "Request Password Reset", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"email\": \"user@example.com\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/auth/password/forgot", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","password","forgot"] } } },
@@ -65,6 +82,7 @@
         { "name": "Get My Liked Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/likes?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","likes"], "query": [ {"key":"pageSize","value":"20"} ] } } },
         { "name": "Get My Saved Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/saves?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","saves"], "query": [ {"key":"pageSize","value":"20"} ] } } },
         { "name": "Update User Profile", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"nickname\": \"new_nickname123\",\n  \"avatarUrl\": \"https://example.com/avatar.jpg\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me", "host": ["{{baseUrl}}"], "path": ["api","v1","me"] } } },
+        { "name": "Update User Profile - Direct Upload", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "body": { "mode": "formdata", "formdata": [ { "key": "nickname", "value": "new_nickname123", "type": "text" }, { "key": "file", "type": "file", "src": "./Screenshot (314).png" } ] }, "url": { "raw": "{{baseUrl}}/api/v1/me", "host": ["{{baseUrl}}"], "path": ["api","v1","me"] } } },
         { "name": "Send Email Verification", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/email/verify/send", "host": ["{{baseUrl}}"], "path": ["api","v1","me","email","verify","send"] } } },
         { "name": "Logout", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"all\": false\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/logout", "host": ["{{baseUrl}}"], "path": ["api","v1","me","logout"] } } },
         { "name": "Logout All Devices", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/logout-all", "host": ["{{baseUrl}}"], "path": ["api","v1","me","logout-all"] } } },
@@ -79,6 +97,16 @@
         { "name": "Get Blocked Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/blocked?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","me","blocked"], "query": [ {"key":"pageSize","value":"20"} ] } } },
         { "name": "Block User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"blockedUserId\": \"{{userId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/me/block", "host": ["{{baseUrl}}"], "path": ["api","v1","me","block"] } } },
         { "name": "Unblock User", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/me/block/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","me","block","{{userId}}"] } } }
+      ]
+    },
+    {
+      "name": "Public User Profiles",
+      "description": "Public user profile endpoints with privacy settings. These endpoints respect user privacy settings and return appropriate messages when data is private.",
+      "item": [
+        { "name": "Get Public User Profile", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}"] } } },
+        { "name": "Get Public User Liked Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/likes?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","likes"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Public User Followers", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/followers?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","followers"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Public User Following", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/following?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","following"], "query": [ {"key":"pageSize","value":"20"} ] } } }
       ]
     },
     {
@@ -114,7 +142,10 @@
         { "name": "Remove Moderator", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/moderators/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","moderators","{{userId}}"] } } },
         { "name": "Ban User", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"userId\": \"{{userId}}\",\n  \"reason\": \"Violation of community guidelines\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/ban", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","ban"] } } },
         { "name": "Unban User", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/ban/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","ban","{{userId}}"] } } },
-        { "name": "Get Banned Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/banned?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","banned"], "query": [ {"key":"pageSize","value":"20"} ] } } }
+        { "name": "Get Banned Users", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/banned?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","banned"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Community Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/posts?sort=new&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","posts"], "query": [ {"key":"sort","value":"new"}, {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Get Community Members", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}/members?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}","members"], "query": [ {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Delete Community", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/communities/{{communityId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","communities","{{communityId}}"] } }, "description": "Delete a community (owner or platform admin). Cascades posts, comments, memberships, and media." }
       ]
     },
     {
@@ -122,12 +153,14 @@
       "description": "Public and community posts. Unified endpoints for voting and save toggling simplify integration.",
       "item": [
         { "name": "List Posts", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/posts?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"], "query": [ {"key":"pageSize","value":"20"} ] } } },
-        { "name": "Create Post (Public)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Public Post\",\n  \"body\": \"This is a public post\",\n  \"visibility\": \"public\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
-        { "name": "Create Post (Community)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Community Post\",\n  \"body\": \"This is a community post\",\n  \"visibility\": \"community\",\n  \"communityId\": \"{{communityId}}\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
+        { "name": "Create Post (Public)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Public Post\",\n  \"body\": \"This is a public post\",\n  \"visibility\": \"public\",\n  \"media\": [ { \"url\": \"{{uploadedUrl}}\", \"type\": \"image\" } ]\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
+        { "name": "Create Post (Public) - Direct Upload (file)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "body": { "mode": "formdata", "formdata": [ { "key": "title", "value": "Public Post with Direct Upload", "type": "text" }, { "key": "body", "value": "This post has an image uploaded directly", "type": "text" }, { "key": "visibility", "value": "public", "type": "text" }, { "key": "file", "type": "file", "src": "./Screenshot (314).png" } ] }, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
+        { "name": "Create Post (Community)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Community Post\",\n  \"body\": \"This is a community post\",\n  \"visibility\": \"community\",\n  \"communityId\": \"{{communityId}}\",\n  \"media\": [ { \"url\": \"{{uploadedUrl}}\", \"type\": \"image\" } ]\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts", "host": ["{{baseUrl}}"], "path": ["api","v1","posts"] } } },
         { "name": "Get Post", "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}"] } } },
         { "name": "Update Post", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Updated Post Title\",\n  \"body\": \"Updated post content\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}"] } } },
         { "name": "Delete Post", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}"] } } },
-        { "name": "Vote (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"entityType\": \"post\",\n  \"entityId\": \"{{postId}}\",\n  \"value\": 1\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/vote", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","vote"] } } },
+        { "name": "Vote (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"entityType\": \"post\",\n  \"entityId\": \"{{postId}}\",\n  \"value\": 1\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/vote", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","vote"] } , "description": "Unified vote endpoint for posts and comments. Body: entityType: 'post'|'comment', entityId: '<id>', value: -1|0|1" } },
+        { "name": "Vote on Post (Specific)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"value\": 1\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/vote", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","vote"] } , "description": "Vote on a specific post. Body: { value: -1|0|1 }" } },
         { "name": "Toggle Save (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"action\": \"save\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/toggle-save", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","toggle-save"] } } },
         { "name": "Toggle Like", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/toggle-like", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","toggle-like"] } } },
         { "name": "Save Post", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/save", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","save"] } } },
@@ -169,31 +202,32 @@
           }
         },
         {
-          "name": "Create Comment",
+          "name": "Create Comment (JSON)",
           "request": {
             "method": "POST",
             "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
+              { "key": "Authorization", "value": "Bearer {{authToken}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
             ],
+            "body": { "mode": "raw", "raw": "{\n  \"body\": \"This is my comment on this post!\",\n  \"parentId\": null,\n  \"media\": [ { \"url\": \"{{uploadedUrl}}\", \"type\": \"image\" } ]\n}" },
+            "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","comments"] },
+            "description": "Create a new comment for a specific post. Uses a URL in media array."
+          }
+        },
+        {
+          "name": "Create Comment - Direct Upload (file)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{authToken}}", "type": "text" } ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"body\": \"This is my comment on this post!\",\n  \"parentId\": null\n}"
+              "mode": "formdata",
+              "formdata": [
+                { "key": "body", "value": "This is my comment with a direct image upload", "type": "text" },
+                { "key": "file", "type": "file", "src": "./Screenshot (314).png" }
+              ]
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "posts", "{{postId}}", "comments"]
-            },
-            "description": "Create a new comment for a specific post. Requires authentication."
+            "url": { "raw": "{{baseUrl}}/api/v1/posts/{{postId}}/comments", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","{{postId}}","comments"] },
+            "description": "Create a new comment and upload a file directly in the body."
           }
         },
         {
@@ -309,7 +343,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "posts", "{{postId}}", "comments", "{{commentId}}", "vote"]
             },
-            "description": "Vote on a comment. Value: 1 (upvote), -1 (downvote), 0 (remove vote)."
+            "description": "Vote on a comment. Body: { value: -1|0|1 } where 1=upvote, -1=downvote, 0=remove."
           }
         },
         {
@@ -421,6 +455,7 @@
         { "name": "Update Conversation", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"title\": \"Updated Group Title\",\n  \"icon\": \"https://example.com/new-icon.png\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}"] } } },
         { "name": "Toggle Mute", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"isMuted\": true\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/mute", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","mute"] } } },
         { "name": "Send Text Message", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"content\": \"Hello! This is a test message.\",\n  \"type\": \"text\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/messages", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","messages"] } } },
+        { "name": "Send Message - Direct Upload", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "body": { "mode": "formdata", "formdata": [ { "key": "conversationId", "value": "{{conversationId}}", "type": "text" }, { "key": "type", "value": "image", "type": "text" }, { "key": "text", "value": "Message with image", "type": "text" }, { "key": "file", "type": "file", "src": "./Screenshot (314).png" } ] }, "url": { "raw": "{{baseUrl}}/api/v1/chat/messages", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","messages"] } } },
         { "name": "Get Conversation Messages", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}/messages?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}","messages"], "query": [ {"key":"pageSize","value":"20"} ] } } },
         { "name": "Presence Heartbeat", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"state\": \"online\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/presence/heartbeat", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","presence","heartbeat"] } } },
         { "name": "Chat Heartbeat (Unified)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"presence\": { \"state\": \"online\" },\n  \"typing\": { \"conversationId\": \"{{conversationId}}\", \"isTyping\": true },\n  \"read\": { \"conversationId\": \"{{conversationId}}\" }\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/heartbeat", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","heartbeat"] } } },
@@ -433,7 +468,9 @@
         { "name": "Create Report (Chat)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"type\": \"message\",\n  \"targetId\": \"message-id\",\n  \"conversationId\": \"{{conversationId}}\",\n  \"reasonCode\": \"spam\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/reports", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports"] } } },
         { "name": "Get Reports (Chat)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/reports?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports"], "query": [ {"key":"pageSize","value":"20"} ] } } },
         { "name": "Get Report (Chat)", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports","{{reportId}}"] } } },
-        { "name": "Update Report Status (Chat)", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"status\": \"resolved\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}/status", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports","{{reportId}}","status"] } } }
+        { "name": "Update Report Status (Chat)", "request": { "method": "PATCH", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"status\": \"resolved\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/chat/reports/{{reportId}}/status", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","reports","{{reportId}}","status"] } } },
+        { "name": "Delete Chat Message", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/messages/{{messageId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","messages","{{messageId}}"] } }, "description": "Delete a chat message (author or moderator). Cascades media and reactions." },
+        { "name": "Delete Conversation", "request": { "method": "DELETE", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/chat/conversations/{{conversationId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","chat","conversations","{{conversationId}}"] } }, "description": "Delete a chat conversation (owner or platform admin). Cascades messages, media, reactions, participants." }
       ]
     },
     {
@@ -519,7 +556,8 @@
       "description": "Men Reviews module: create and vote on reviews (red/green/unknown), threaded comments, and aggregation.",
       "item": [
         { "name": "Get Aggregated Reviews", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reviews/aggregate?limit=20", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","aggregate"], "query": [ {"key":"limit","value":"20"} ] } } },
-        { "name": "Create Review", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"communityId\": \"{{communityId}}\",\n  \"targetId\": \"some-target\",\n  \"label\": \"red\",\n  \"comment\": \"Suspicious behavior\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reviews", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews"] } } },
+        { "name": "Create Review", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"communityId\": \"{{communityId}}\",\n  \"targetId\": \"some-target\",\n  \"label\": \"red\",\n  \"comment\": \"Suspicious behavior\",\n  \"media\": [ { \"url\": \"{{uploadedUrl}}\", \"type\": \"image\" } ]\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reviews", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews"] } }, "description": "Create a review using JSON body with media URL (e.g., from Cloudinary proxy upload)." },
+        { "name": "Create Review - Direct Upload (file)", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "body": { "mode": "formdata", "formdata": [ { "key": "communityId", "value": "{{communityId}}", "type": "text" }, { "key": "targetId", "value": "some-target", "type": "text" }, { "key": "label", "value": "red", "type": "text" }, { "key": "comment", "value": "Suspicious behavior", "type": "text" }, { "key": "file", "type": "file", "src": "./Screenshot (314).png" } ] }, "url": { "raw": "{{baseUrl}}/api/v1/reviews", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews"] } }, "description": "Create a review and upload an image directly in the multipart body (same behavior as posts/comments)." },
         { "name": "Get Review", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}"] } } },
         { "name": "Vote on Review", "request": { "method": "POST", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"},{"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"label\": \"green\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}/vote", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}","vote"] } } },
         { "name": "List Review Comments", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/reviews/{{reviewId}}/comments", "host": ["{{baseUrl}}"], "path": ["api","v1","reviews","{{reviewId}}","comments"] } } },
@@ -531,6 +569,24 @@
       "description": "Inbound webhooks (e.g., KYC providers).",
       "item": [
         { "name": "KYC Provider Webhook", "request": { "method": "POST", "header": [ {"key":"Content-Type","value":"application/json","type":"text"} ], "body": {"mode":"raw","raw":"{\n  \"event\": \"test\"\n}"}, "url": { "raw": "{{baseUrl}}/api/v1/webhooks/kyc/sumsub", "host": ["{{baseUrl}}"], "path": ["api","v1","webhooks","kyc","sumsub"] } } }
+      ]
+    },
+    {
+      "name": "Feed",
+      "description": "Home and saved feeds.",
+      "item": [
+        { "name": "Home Feed", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/feed/home?sort=new&pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","feed","home"], "query": [ {"key":"sort","value":"new"}, {"key":"pageSize","value":"20"} ] } } },
+        { "name": "Saved Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/posts/feed/saved?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","posts","feed","saved"], "query": [ {"key":"pageSize","value":"20"} ] } } }
+      ]
+    },
+    {
+      "name": "Users (Public)",
+      "description": "Public user endpoints with privacy enforcement.",
+      "item": [
+        { "name": "Get Public Profile", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}"] } } },
+        { "name": "Get User Liked Posts", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/likes?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","likes"], "query": [ {"key":"pageSize","value":"20"} ] } }, "description": "Respects user's showLikedPosts setting; returns 403 if private." },
+        { "name": "Get User Followers", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/followers?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","followers"], "query": [ {"key":"pageSize","value":"20"} ] } }, "description": "Respects user's showFollowers setting; returns 403 if private." },
+        { "name": "Get User Following", "request": { "method": "GET", "header": [ {"key":"Authorization","value":"Bearer {{authToken}}","type":"text"} ], "url": { "raw": "{{baseUrl}}/api/v1/users/{{userId}}/following?pageSize=20", "host": ["{{baseUrl}}"], "path": ["api","v1","users","{{userId}}","following"], "query": [ {"key":"pageSize","value":"20"} ] } }, "description": "Respects user's showFollowing setting; returns 403 if private." }
       ]
     }
   ]

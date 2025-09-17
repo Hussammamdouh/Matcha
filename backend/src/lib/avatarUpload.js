@@ -1,5 +1,6 @@
 const { getStorage } = require('./firebase');
 const { createRequestLogger } = require('./logger');
+const { getProvider } = require('./storageProvider');
 
 // Maximum file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -37,24 +38,14 @@ async function generateAvatarUploadUrl(userId, fileName, contentType) {
       throw new Error(`Invalid file extension. Allowed extensions: ${validExtensions.join(', ')}`);
     }
 
-    const storage = getStorage();
-    const bucket = storage.bucket();
-
     // Create file path: avatars/{userId}/{timestamp}_{random}.{extension}
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 15);
     const filePath = `avatars/${userId}/${timestamp}_${random}.${extension}`;
-
-    // Generate signed URL for upload
-    const [signedUrl] = await bucket.file(filePath).getSignedUrl({
-      action: 'write',
-      contentType,
-      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-      conditions: [
-        ['content-length-range', 0, MAX_FILE_SIZE],
-        ['starts-with', '$Content-Type', 'image/'],
-      ],
-    });
+    
+    // Generate provider upload URL
+    const provider = getProvider();
+    const result = await provider.generateUploadUrl(filePath, contentType, 15 * 60);
 
     logger.info('Avatar upload URL generated', {
       userId,
@@ -64,9 +55,11 @@ async function generateAvatarUploadUrl(userId, fileName, contentType) {
     });
 
     return {
-      uploadUrl: signedUrl,
+      uploadUrl: result.uploadUrl || result.signedUrl,
       filePath,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      fields: result.fields,
+      method: result.method || 'PUT',
     };
   } catch (error) {
     logger.error('Failed to generate avatar upload URL', {
@@ -85,10 +78,20 @@ async function generateAvatarUploadUrl(userId, fileName, contentType) {
  * @returns {string} Public URL
  */
 function getAvatarPublicUrl(filePath) {
+  if ((process.env.STORAGE_PROVIDER || 'firebase').toLowerCase() === 'cloudinary') {
+    const cloudinary = require('cloudinary').v2;
+    if (!cloudinary.config().cloud_name) {
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true,
+      });
+    }
+    return cloudinary.url(filePath, { resource_type: 'image', secure: true });
+  }
   const storage = getStorage();
   const bucket = storage.bucket();
-
-  // Make the file publicly readable
   return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
 }
 
@@ -101,19 +104,11 @@ async function deleteAvatar(filePath) {
   const logger = createRequestLogger();
 
   try {
-    const storage = getStorage();
-    const bucket = storage.bucket();
-
-    await bucket.file(filePath).delete();
-
-    logger.info('Avatar file deleted', {
-      filePath,
-    });
+    const provider = getProvider();
+    await provider.deleteFile(filePath);
+    logger.info('Avatar file deleted', { filePath });
   } catch (error) {
-    logger.error('Failed to delete avatar file', {
-      error: error.message,
-      filePath,
-    });
+    logger.error('Failed to delete avatar file', { error: error.message, filePath });
     throw error;
   }
 }

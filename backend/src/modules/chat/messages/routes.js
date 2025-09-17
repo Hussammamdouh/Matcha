@@ -139,10 +139,12 @@ router.use(authenticateToken);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 // Send message (with rate limiting)
+const directUpload = require('../../../middlewares/directUpload');
 router.post(
   '/',
   sendMessageLimiter,
   sendMessageDailyLimiter,
+  directUpload({ namespace: 'chat' }),
   sendMessage
 );
 

@@ -313,6 +313,57 @@ async function deleteMessage(messageId, userId) {
 
     await messageRef.update(updateData);
 
+    // Best-effort: delete message media from storage if present
+    try {
+      const snap = await messageRef.get();
+      const data = snap.exists ? snap.data() : null;
+      if (data && data.media && (data.media.objectPath || data.media.url)) {
+        const { getProvider } = require('../../../lib/storageProvider');
+        const provider = getProvider();
+
+        function extractObjectPathFromUrl(url) {
+          try {
+            if (!url || typeof url !== 'string') return null;
+            if (url.includes('res.cloudinary.com')) {
+              const idx = url.indexOf('/upload/');
+              if (idx !== -1) {
+                const after = url.substring(idx + '/upload/'.length);
+                const parts = after.split('/');
+                const maybeVersion = parts[0];
+                const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+                const pathParts = parts.slice(startIndex);
+                const last = pathParts.pop() || '';
+                const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+                const publicId = [...pathParts, withoutExt].join('/');
+                return publicId || null;
+              }
+            }
+            if (url.includes('storage.googleapis.com')) {
+              const u = new URL(url);
+              const segments = u.pathname.split('/').filter(Boolean);
+              if (segments.length >= 2) {
+                return decodeURIComponent(segments.slice(1).join('/'));
+              }
+            }
+            if (url.startsWith('gs://')) {
+              const pathStart = url.indexOf('/', 'gs://'.length);
+              if (pathStart > 0) return url.substring(pathStart + 1);
+            }
+            return null;
+          } catch (_) {
+            return null;
+          }
+        }
+
+        const objectPath = data.media.objectPath || extractObjectPathFromUrl(data.media.url);
+        if (objectPath) {
+          await provider.deleteFile(objectPath).catch(() => {});
+        }
+      }
+    } catch (e) {
+      logger.warn('Failed to delete chat message media (continuing)', { messageId, error: e.message });
+    }
+
     logger.info('Message deleted successfully', {
       messageId,
       userId,

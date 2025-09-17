@@ -64,6 +64,51 @@ router.get('/exists', authenticateToken, checkFileExistsValidation, validate, ch
 router.get('/size', authenticateToken, getFileSizeValidation, validate, getFileSize);
 router.get('/list', authenticateToken, listFilesValidation, validate, listFiles);
 
+// Proxy direct-upload endpoint for Cloudinary form POST if clients cannot POST to Cloudinary
+router.post('/proxy/upload', authenticateToken, async (req, res) => {
+  try {
+    if ((process.env.STORAGE_PROVIDER || 'firebase').toLowerCase() !== 'cloudinary') {
+      return res.status(400).json({ ok: false, error: 'Proxy only available for Cloudinary', code: 'PROXY_UNSUPPORTED' });
+    }
+    const busboy = require('busboy');
+    const form = busboy({ headers: req.headers });
+    const cloudinary = require('cloudinary').v2;
+    if (!cloudinary.config().cloud_name) {
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true,
+      });
+    }
+
+    const fields = {};
+    let fileHandled = false;
+
+    form.on('field', (name, val) => { fields[name] = val; });
+    form.on('file', (name, file, info) => {
+      fileHandled = true;
+      const resourceType = (fields.resource_type || 'auto');
+      const options = { resource_type: resourceType, public_id: fields.public_id, overwrite: true, folder: undefined };
+      const uploadStream = cloudinary.uploader.upload_stream(options, (error, result) => {
+        if (error) {
+          return res.status(500).json({ ok: false, error: error.message, code: 'PROXY_UPLOAD_FAILED' });
+        }
+        return res.json({ ok: true, data: { publicId: result.public_id, url: result.secure_url, resourceType: result.resource_type } });
+      });
+      file.pipe(uploadStream);
+    });
+    form.on('close', () => {
+      if (!fileHandled) {
+        return res.status(400).json({ ok: false, error: 'No file provided', code: 'NO_FILE' });
+      }
+    });
+    req.pipe(form);
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: 'Proxy upload failed', code: 'PROXY_ERROR' });
+  }
+});
+
 /**
  * @swagger
  * /api/v1/storage/chat/sign:

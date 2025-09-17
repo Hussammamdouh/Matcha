@@ -38,7 +38,16 @@ const router = express.Router();
 router.get('/', listPosts);
 
 // Create post (requires authentication)
-router.post('/', authenticateToken, generalRateLimiter, createPostValidation, validate, createPost);
+const directUpload = require('../../middlewares/directUpload');
+router.post(
+  '/',
+  authenticateToken,
+  generalRateLimiter,
+  directUpload({ namespace: 'posts' }),
+  createPostValidation,
+  validate,
+  createPost
+);
 
 // Get post by ID (public)
 router.get('/:id', getPostValidation, validate, getPost);
@@ -236,5 +245,25 @@ router.post(
   }
 );
 
+// Feed routes
+// GET /api/v1/posts/feed/home - Home feed (posts from followed users and joined communities)
+router.get(
+  '/feed/home',
+  authenticateToken,
+  generalRateLimiter,
+  getFeedValidation,
+  validate,
+  getHomeFeed
+);
+
+// GET /api/v1/posts/feed/saved - Saved posts feed
+router.get(
+  '/feed/saved',
+  authenticateToken,
+  generalRateLimiter,
+  getSavedPostsValidation,
+  validate,
+  getSavedPosts
+);
 
 module.exports = router;

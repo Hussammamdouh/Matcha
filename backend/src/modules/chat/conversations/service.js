@@ -2,6 +2,7 @@ const { getFirestore } = require('../../../lib/firebase');
 const { createModuleLogger } = require('../../../lib/logger');
 const { isParticipant, isModerator, isOwner, isBlocked } = require('../../../lib/chat/permissions');
 const { buildConversationSummary, buildParticipantSummary } = require('../../../lib/chat/preview');
+const { getProvider } = require('../../../lib/storageProvider');
 const { encodeCursor, decodeCursor } = require('../../../lib/pagination');
 
 let db;
@@ -653,6 +654,185 @@ async function toggleMute(conversationId, userId, isMuted) {
 }
 
 /**
+ * Delete a conversation and cascade delete messages, reactions, media, and participants
+ * - Owner can delete; platform admins can delete any
+ * @param {string} conversationId
+ * @param {string} userId
+ */
+async function deleteConversation(conversationId, userId) {
+  db = db || getFirestore();
+  try {
+    // Load conversation
+    const convRef = db.collection('conversations').doc(conversationId);
+    const convDoc = await convRef.get();
+    if (!convDoc.exists) throw new Error('Conversation not found');
+    const conversation = convDoc.data();
+
+    // Permission: owner or admin
+    let isAdmin = false;
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      const role = userDoc.exists ? (userDoc.data().role || userDoc.data().adminRole) : null;
+      isAdmin = role === 'admin' || role === 'super_admin';
+    } catch (_) {}
+
+    // Identify owner
+    let ownerId = null;
+    try {
+      const ownerSnap = await db
+        .collection('conversations')
+        .doc(conversationId)
+        .collection('participants')
+        .where('role', '==', 'owner')
+        .limit(1)
+        .get();
+      if (!ownerSnap.empty) ownerId = ownerSnap.docs[0].id || ownerSnap.docs[0].data().userId;
+    } catch (_) {}
+
+    const isOwner = !!ownerId && (ownerId === userId);
+    if (!isOwner && !isAdmin) {
+      throw new Error('Insufficient permissions to delete conversation');
+    }
+
+    // Delete messages (soft-deleted already allowed) and their media and reactions
+    try {
+      const provider = getProvider();
+      const messagesSnap = await db
+        .collection('messages')
+        .where('conversationId', '==', conversationId)
+        .get();
+
+      function extractObjectPathFromUrl(url) {
+        try {
+          if (!url || typeof url !== 'string') return null;
+          if (url.includes('res.cloudinary.com')) {
+            const idx = url.indexOf('/upload/');
+            if (idx !== -1) {
+              const after = url.substring(idx + '/upload/'.length);
+              const parts = after.split('/');
+              const maybeVersion = parts[0];
+              const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+              const pathParts = parts.slice(startIndex);
+              const last = pathParts.pop() || '';
+              const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+              const publicId = [...pathParts, withoutExt].join('/');
+              return publicId || null;
+            }
+          }
+          if (url.includes('storage.googleapis.com')) {
+            const u = new URL(url);
+            const segments = u.pathname.split('/').filter(Boolean);
+            if (segments.length >= 2) return decodeURIComponent(segments.slice(1).join('/'));
+          }
+          if (url.startsWith('gs://')) {
+            const pathStart = url.indexOf('/', 'gs://'.length);
+            if (pathStart > 0) return url.substring(pathStart + 1);
+          }
+          return null;
+        } catch (_) { return null; }
+      }
+
+      for (const msgDoc of messagesSnap.docs) {
+        const m = { id: msgDoc.id, ...msgDoc.data() };
+        // Delete reactions subcollection
+        try {
+          const reactions = await db
+            .collection('messages')
+            .doc(m.id)
+            .collection('reactions')
+            .get();
+          if (!reactions.empty) {
+            const batch = db.batch();
+            reactions.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+        } catch (_) {}
+
+        // Delete media file if present
+        try {
+          const objectPath = m.media?.objectPath || extractObjectPathFromUrl(m.media?.url);
+          if (objectPath) await provider.deleteFile(objectPath).catch(() => {});
+        } catch (_) {}
+
+        // Delete message document entirely
+        try { await msgDoc.ref.delete(); } catch (_) {}
+      }
+    } catch (e) {
+      logger.warn('Failed to fully cascade delete messages (continuing)', { conversationId, error: e.message });
+    }
+
+    // Remove participants subcollection
+    try {
+      const partsSnap = await db
+        .collection('conversations')
+        .doc(conversationId)
+        .collection('participants')
+        .get();
+      if (!partsSnap.empty) {
+        const batch = db.batch();
+        partsSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      logger.warn('Failed to delete conversation participants (continuing)', { conversationId, error: e.message });
+    }
+
+    // Delete conversation icon if set
+    try {
+      if (conversation.icon) {
+        const provider = getProvider();
+        const iconPath = conversation.icon && typeof conversation.icon === 'string' ? conversation.icon : null;
+        if (iconPath) {
+          // Try both direct path and extraction from URL
+          let objectPath = iconPath;
+          if (iconPath.startsWith('http')) {
+            objectPath = (function (url) {
+              try {
+                if (url.includes('res.cloudinary.com')) {
+                  const idx = url.indexOf('/upload/');
+                  if (idx !== -1) {
+                    const after = url.substring(idx + '/upload/'.length);
+                    const parts = after.split('/');
+                    const maybeVersion = parts[0];
+                    const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+                    const pathParts = parts.slice(startIndex);
+                    const last = pathParts.pop() || '';
+                    const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+                    return [...pathParts, withoutExt].join('/');
+                  }
+                }
+                if (url.includes('storage.googleapis.com')) {
+                  const u = new URL(url);
+                  const segments = u.pathname.split('/').filter(Boolean);
+                  if (segments.length >= 2) return decodeURIComponent(segments.slice(1).join('/'));
+                }
+                if (url.startsWith('gs://')) {
+                  const pathStart = url.indexOf('/', 'gs://'.length);
+                  if (pathStart > 0) return url.substring(pathStart + 1);
+                }
+                return null;
+              } catch (_) { return null; }
+            })(iconPath);
+          }
+          if (objectPath) await provider.deleteFile(objectPath).catch(() => {});
+        }
+      }
+    } catch (e) {
+      logger.warn('Failed to delete conversation icon (continuing)', { conversationId, error: e.message });
+    }
+
+    // Finally, delete conversation document
+    await convRef.delete();
+
+    logger.info('Conversation deleted successfully', { conversationId, deletedBy: userId });
+    return true;
+  } catch (error) {
+    logger.error('Failed to delete conversation', { error: error.message, conversationId, userId });
+    throw error;
+  }
+}
+
+/**
  * Ban a user from a conversation
  * @param {string} conversationId - Conversation ID
  * @param {string} moderatorId - Moderator user ID
@@ -717,4 +897,5 @@ module.exports = {
   updateConversation,
   toggleMute,
   banUser,
+  deleteConversation,
 };

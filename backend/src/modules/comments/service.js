@@ -64,6 +64,9 @@ async function createComment(commentData, postId, userId, userNickname) {
       authorId: userId,
       authorNickname: userNickname,
       body: commentData.body,
+      media: Array.isArray(commentData.media)
+        ? commentData.media.filter(m => m && typeof m.url === 'string').map(m => ({ url: m.url, type: m.type || 'image' }))
+        : [],
       parentId: commentData.parentId || null,
       depth,
       createdAt: new Date(),
@@ -210,9 +213,20 @@ async function deleteComment(commentId, userId) {
 
     const comment = commentDoc.data();
 
-    // Check permissions (author or community mod/owner)
+    // Check permissions (author, post author, or community mod/owner)
     let canDelete = comment.authorId === userId; // Author can always delete their own comment
-    
+
+    // Post author can delete any comment on their post (moderation of own post)
+    try {
+      const postDoc = await db.collection('posts').doc(comment.postId).get();
+      if (postDoc.exists) {
+        const post = postDoc.data();
+        if (post.authorId === userId) {
+          canDelete = true;
+        }
+      }
+    } catch (_) {}
+
     // If comment belongs to a community, check community permissions
     if (comment.communityId) {
       const communityDoc = await db.collection('communities').doc(comment.communityId).get();
@@ -250,6 +264,58 @@ async function deleteComment(commentId, userId) {
       body: '[deleted]',
       updatedAt: new Date(),
     });
+
+    // Best-effort: delete comment media files
+    try {
+      const { getProvider } = require('../../lib/storageProvider');
+      const provider = getProvider();
+      const mediaList = Array.isArray(comment.media) ? comment.media : [];
+
+      function extractObjectPathFromUrl(url) {
+        try {
+          if (!url || typeof url !== 'string') return null;
+          if (url.includes('res.cloudinary.com')) {
+            const idx = url.indexOf('/upload/');
+            if (idx !== -1) {
+              const after = url.substring(idx + '/upload/'.length);
+              const parts = after.split('/');
+              const maybeVersion = parts[0];
+              const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+              const pathParts = parts.slice(startIndex);
+              const last = pathParts.pop() || '';
+              const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+              const publicId = [...pathParts, withoutExt].join('/');
+              return publicId || null;
+            }
+          }
+          if (url.includes('storage.googleapis.com')) {
+            const u = new URL(url);
+            const segments = u.pathname.split('/').filter(Boolean);
+            if (segments.length >= 2) {
+              return decodeURIComponent(segments.slice(1).join('/'));
+            }
+          }
+          if (url.startsWith('gs://')) {
+            const pathStart = url.indexOf('/', 'gs://'.length);
+            if (pathStart > 0) return url.substring(pathStart + 1);
+          }
+          return null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      const deletions = [];
+      for (const m of mediaList) {
+        const objectPath = (m && m.objectPath) || extractObjectPathFromUrl(m && m.url);
+        if (objectPath) {
+          deletions.push(provider.deleteFile(objectPath).catch(() => false));
+        }
+      }
+      if (deletions.length > 0) await Promise.allSettled(deletions);
+    } catch (e) {
+      logger.warn('Failed to delete media for comment (continuing)', { commentId, error: e.message });
+    }
 
     // Update post comment count (main comment + all replies)
     const totalDeleted = 1 + repliesToDelete.length;
@@ -300,12 +366,78 @@ async function deleteCommentRecursive(commentId, userId) {
       await deleteCommentRecursive(replyId, userId);
     }
 
-    // Soft delete this comment
+    // Soft delete this comment and remove its votes (best-effort)
     await commentRef.update({
       isDeleted: true,
       body: '[deleted]',
       updatedAt: new Date(),
     });
+
+    try {
+      const votesSnap = await commentRef.collection('votes').get();
+      if (!votesSnap.empty) {
+        const { db: rootDb } = require('../../lib/firebase');
+        const batch = rootDb.batch();
+        votesSnap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      logger.warn('Failed to remove votes for comment (continuing)', { commentId, error: e.message });
+    }
+
+    // Best-effort: delete this comment's media files
+    try {
+      const snap = await commentRef.get();
+      const data = snap.exists ? snap.data() : null;
+      const mediaList = data && Array.isArray(data.media) ? data.media : [];
+      if (mediaList.length > 0) {
+        const { getProvider } = require('../../lib/storageProvider');
+        const provider = getProvider();
+
+        function extractObjectPathFromUrl(url) {
+          try {
+            if (!url || typeof url !== 'string') return null;
+            if (url.includes('res.cloudinary.com')) {
+              const idx = url.indexOf('/upload/');
+              if (idx !== -1) {
+                const after = url.substring(idx + '/upload/'.length);
+                const parts = after.split('/');
+                const maybeVersion = parts[0];
+                const startIndex = /^v\d+$/.test(maybeVersion) ? 1 : 0;
+                const pathParts = parts.slice(startIndex);
+                const last = pathParts.pop() || '';
+                const withoutExt = last.includes('.') ? last.substring(0, last.lastIndexOf('.')) : last;
+                const publicId = [...pathParts, withoutExt].join('/');
+                return publicId || null;
+              }
+            }
+            if (url.includes('storage.googleapis.com')) {
+              const u = new URL(url);
+              const segments = u.pathname.split('/').filter(Boolean);
+              if (segments.length >= 2) {
+                return decodeURIComponent(segments.slice(1).join('/'));
+              }
+            }
+            if (url.startsWith('gs://')) {
+              const pathStart = url.indexOf('/', 'gs://'.length);
+              if (pathStart > 0) return url.substring(pathStart + 1);
+            }
+            return null;
+          } catch (_) {
+            return null;
+          }
+        }
+
+        const deletions = [];
+        for (const m of mediaList) {
+          const objectPath = (m && m.objectPath) || extractObjectPathFromUrl(m && m.url);
+          if (objectPath) deletions.push(provider.deleteFile(objectPath).catch(() => false));
+        }
+        if (deletions.length > 0) await Promise.allSettled(deletions);
+      }
+    } catch (e) {
+      logger.warn('Failed to delete media for comment recursively (continuing)', { commentId, error: e.message });
+    }
 
     logger.info('Comment deleted recursively', {
       commentId,

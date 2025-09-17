@@ -19,6 +19,18 @@ const createCommentValidation = [
     .trim()
     .notEmpty()
     .withMessage('Parent comment ID must be a valid string'),
+
+  // Optional media on comments
+  body('media')
+    .optional()
+    .isArray({ max: 3 })
+    .withMessage('Maximum 3 media items allowed'),
+
+  body('media.*.url').optional().isURL().withMessage('media.url must be a valid URL'),
+  body('media.*.type')
+    .optional()
+    .isIn(['image', 'audio', 'video'])
+    .withMessage('media.type must be image, audio, or video'),
 ];
 
 // Update comment validation

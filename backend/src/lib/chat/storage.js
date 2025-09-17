@@ -1,8 +1,5 @@
-const { getStorage } = require('../firebase');
 const { createModuleLogger } = require('../logger');
-
-const storage = getStorage();
-const bucket = storage.bucket();
+const { getProvider } = require('../storageProvider');
 const logger = createModuleLogger('chat:storage');
 
 /**
@@ -82,13 +79,8 @@ async function generateChatUploadUrl(conversationId, messageId, mimeType, extens
     const uuid = require('uuid').v4();
     const fileName = `${uuid}.${extension}`;
     const filePath = `chat/conversations/${conversationId}/messages/${messageId}/${fileName}`;
-    
-    const [url] = await bucket.file(filePath).getSignedUrl({
-      version: 'v4',
-      action: 'write',
-      expires: Date.now() + (expiresIn * 1000),
-      contentType: mimeType,
-    });
+    const provider = getProvider();
+    const result = await provider.generateUploadUrl(filePath, mimeType, expiresIn);
 
     logger.info('Generated chat upload URL', {
       conversationId,
@@ -99,12 +91,12 @@ async function generateChatUploadUrl(conversationId, messageId, mimeType, extens
     });
 
     return {
-      url,
+      url: result.uploadUrl || result.signedUrl || result.url,
       objectPath: filePath,
-      expiresAt: new Date(Date.now() + (expiresIn * 1000)),
-      headers: {
-        'Content-Type': mimeType,
-      },
+      expiresAt: result.expiresAt || new Date(Date.now() + (expiresIn * 1000)),
+      headers: result.fields ? undefined : { 'Content-Type': mimeType },
+      fields: result.fields,
+      method: result.method || 'PUT',
     };
   } catch (error) {
     logger.error('Failed to generate chat upload URL', {

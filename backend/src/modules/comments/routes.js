@@ -31,10 +31,12 @@ const router = express.Router();
 router.get('/:postId/comments', getPostCommentsValidation, validate, getPostComments);
 
 // Create comment for a post (requires authentication)
+const directUpload = require('../../middlewares/directUpload');
 router.post(
   '/:postId/comments',
   authenticateToken,
   generalRateLimiter,
+  directUpload({ namespace: 'comments' }),
   createCommentValidation,
   validate,
   createComment
