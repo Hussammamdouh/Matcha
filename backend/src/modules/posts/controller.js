@@ -216,7 +216,15 @@ async function getPost(req, res) {
 async function listPosts(req, res) {
   try {
     const { authorId, communityId, visibility, pageSize, cursor } = req.query;
-    const result = await postsService.listPosts({ authorId, communityId, visibility, pageSize: pageSize ? parseInt(pageSize, 10) : 20, cursor });
+    const userId = req.user?.uid || null; // Include user ID if authenticated
+    const result = await postsService.listPosts({ 
+      authorId, 
+      communityId, 
+      visibility, 
+      pageSize: pageSize ? parseInt(pageSize, 10) : 20, 
+      cursor,
+      userId 
+    });
     res.json({ ok: true, data: result.posts, meta: { pagination: result.pagination } });
   } catch (error) {
     const logger = require('../../lib/logger').createRequestLogger(req.id);
@@ -537,6 +545,7 @@ async function getHomeFeed(req, res) {
       meta: {
         pagination: result.pagination,
         filters: { sort },
+        ...(result.meta || {}), // Include fallback metadata if present
       },
     });
   } catch (error) {
@@ -550,6 +559,95 @@ async function getHomeFeed(req, res) {
       error: {
         code: 'INTERNAL_ERROR',
         message: 'Failed to get home feed',
+      },
+    });
+  }
+}
+
+/**
+ * Get unified home feed (posts + men reviews)
+ * GET /api/v1/feed/unified
+ */
+async function getUnifiedHomeFeed(req, res) {
+  try {
+    const { uid } = req.user;
+    const { sort = 'hot', pageSize = 20, cursor = null } = req.query;
+
+    logger.info('Getting unified home feed', {
+      userId: uid,
+      sort,
+      pageSize: parseInt(pageSize),
+      hasCursor: !!cursor,
+    });
+
+    const result = await postsService.getUnifiedHomeFeed(uid, {
+      sort,
+      pageSize: parseInt(pageSize),
+      cursor,
+    });
+
+    res.json({
+      ok: true,
+      data: result.feed,
+      meta: {
+        pagination: result.pagination,
+        filters: { sort },
+        ...(result.meta || {}), // Include fallback metadata if present
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get unified home feed', {
+      error: error.message,
+      userId: req.user?.uid,
+    });
+
+    res.status(500).json({
+      ok: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to get unified home feed',
+      },
+    });
+  }
+}
+
+/**
+ * Get recommended communities for users with no communities
+ * GET /api/v1/feed/recommendations
+ */
+async function getRecommendedCommunities(req, res) {
+  try {
+    const { uid } = req.user;
+    const { limit = 10 } = req.query;
+
+    logger.info('Getting recommended communities', {
+      userId: uid,
+      limit: parseInt(limit),
+    });
+
+    const result = await postsService.getRecommendedCommunities(uid, {
+      limit: parseInt(limit),
+    });
+
+    res.json({
+      ok: true,
+      data: result.communities,
+      meta: {
+        ...(result.meta || {}),
+        filters: { limit: parseInt(limit) },
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get recommended communities', {
+      error: error.message,
+      userId: req.user?.uid,
+    });
+
+    res.status(500).json({
+      ok: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to get recommended communities',
       },
     });
   }
@@ -664,6 +762,8 @@ module.exports = {
   savePost,
   unsavePost,
   getHomeFeed,
+  getUnifiedHomeFeed,
+  getRecommendedCommunities,
   getCommunityPosts,
   getSavedPosts,
 };

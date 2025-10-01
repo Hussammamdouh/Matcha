@@ -105,46 +105,13 @@ async function searchPosts(query, options = {}) {
   const { category, sortBy, cursor, limit } = options;
 
   try {
-    let postsRef = db.collection('posts').where('isDeleted', '==', false);
-
-    // Apply category filter if specified
-    if (category) {
-      postsRef = postsRef.where('communityId', 'in', await getCommunityIdsByCategory(category));
-    }
-
-    // Apply sorting
-    switch (sortBy) {
-      case 'score':
-        postsRef = postsRef.orderBy('score', 'desc');
-        break;
-      case 'createdAt':
-        postsRef = postsRef.orderBy('createdAt', 'desc');
-        break;
-      case 'relevance':
-      default:
-        postsRef = postsRef.orderBy('hotScore', 'desc');
-        break;
-    }
-
-    // Apply cursor pagination
-    if (cursor) {
-      const decoded = decodeCursor(cursor);
-      if (decoded?.id) {
-        try {
-          const docSnap = await db.collection('posts').doc(decoded.id).get();
-          if (docSnap.exists) {
-            postsRef = postsRef.startAfter(docSnap);
-          }
-        } catch (_) {}
-      }
-    }
-
-    const snapshot = await postsRef.limit(limit).get();
+    // Very simple query - just get all posts and filter in memory
+    const snapshot = await db.collection('posts').limit(50).get();
     const posts = [];
 
     snapshot.forEach(doc => {
       const post = doc.data();
-      if (matchesQuery(post, query)) {
+      if (!post.isDeleted && matchesQuery(post, query)) {
         posts.push({
           id: doc.id,
           ...post,
@@ -152,16 +119,16 @@ async function searchPosts(query, options = {}) {
       }
     });
 
-    // Generate next cursor
-    const nextCursor =
-      snapshot.docs.length === limit
-        ? encodeCursor({ id: snapshot.docs[snapshot.docs.length - 1].id, createdAt: snapshot.docs[snapshot.docs.length - 1].get('createdAt') })
-        : null;
+    // Sort by createdAt (most recent first)
+    posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Limit results
+    const limitedPosts = posts.slice(0, limit);
 
     return {
-      results: posts,
-      total: posts.length,
-      nextCursor,
+      results: limitedPosts,
+      total: limitedPosts.length,
+      nextCursor: null, // Simplified - no cursor for now
     };
   } catch (error) {
     logger.error('Post search failed', { error: error.message, query });
@@ -179,46 +146,13 @@ async function searchCommunities(query, options = {}) {
   const { category, sortBy, cursor, limit } = options;
 
   try {
-    let communitiesRef = db.collection('communities').where('isDeleted', '==', false);
-
-    // Apply category filter if specified
-    if (category) {
-      communitiesRef = communitiesRef.where('category', '==', category);
-    }
-
-    // Apply sorting
-    switch (sortBy) {
-      case 'memberCount':
-        communitiesRef = communitiesRef.orderBy('memberCount', 'desc');
-        break;
-      case 'createdAt':
-        communitiesRef = communitiesRef.orderBy('createdAt', 'desc');
-        break;
-      case 'relevance':
-      default:
-        communitiesRef = communitiesRef.orderBy('score', 'desc');
-        break;
-    }
-
-    // Apply cursor pagination
-    if (cursor) {
-      const decoded = decodeCursor(cursor);
-      if (decoded?.id) {
-        try {
-          const docSnap = await db.collection('communities').doc(decoded.id).get();
-          if (docSnap.exists) {
-            communitiesRef = communitiesRef.startAfter(docSnap);
-          }
-        } catch (_) {}
-      }
-    }
-
-    const snapshot = await communitiesRef.limit(limit).get();
+    // Very simple query - just get all communities and filter in memory
+    const snapshot = await db.collection('communities').limit(50).get();
     const communities = [];
 
     snapshot.forEach(doc => {
       const community = doc.data();
-      if (matchesQuery(community, query)) {
+      if (!community.isDeleted && matchesQuery(community, query)) {
         communities.push({
           id: doc.id,
           ...community,
@@ -226,16 +160,16 @@ async function searchCommunities(query, options = {}) {
       }
     });
 
-    // Generate next cursor
-    const nextCursor =
-      snapshot.docs.length === limit
-        ? encodeCursor({ id: snapshot.docs[snapshot.docs.length - 1].id, createdAt: snapshot.docs[snapshot.docs.length - 1].get('createdAt') })
-        : null;
+    // Sort by createdAt (most recent first)
+    communities.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Limit results
+    const limitedCommunities = communities.slice(0, limit);
 
     return {
-      results: communities,
-      total: communities.length,
-      nextCursor,
+      results: limitedCommunities,
+      total: limitedCommunities.length,
+      nextCursor: null, // Simplified - no cursor for now
     };
   } catch (error) {
     logger.error('Community search failed', { error: error.message, query });
@@ -253,58 +187,33 @@ async function searchUsers(query, options = {}) {
   const { sortBy, cursor, limit } = options;
 
   try {
-    let usersRef = db.collection('users').where('isDeleted', '==', false);
-
-    // Apply sorting
-    switch (sortBy) {
-      case 'createdAt':
-        usersRef = usersRef.orderBy('createdAt', 'desc');
-        break;
-      case 'relevance':
-      default:
-        usersRef = usersRef.orderBy('score', 'desc');
-        break;
-    }
-
-    // Apply cursor pagination
-    if (cursor) {
-      const decoded = decodeCursor(cursor);
-      if (decoded?.id) {
-        try {
-          const docSnap = await db.collection('users').doc(decoded.id).get();
-          if (docSnap.exists) {
-            usersRef = usersRef.startAfter(docSnap);
-          }
-        } catch (_) {}
-      }
-    }
-
-    const snapshot = await usersRef.limit(limit).get();
+    // Very simple query - just get all users and filter in memory
+    const snapshot = await db.collection('users').limit(50).get();
     const users = [];
 
     snapshot.forEach(doc => {
       const user = doc.data();
-      if (matchesQuery(user, query)) {
+      if (!user.isDeleted && matchesQuery(user, query)) {
         users.push({
           id: doc.id,
           nickname: user.nickname,
           avatar: user.avatar,
-          score: user.score,
+          score: user.score || 0,
           createdAt: user.createdAt,
         });
       }
     });
 
-    // Generate next cursor
-    const nextCursor =
-      snapshot.docs.length === limit
-        ? encodeCursor({ id: snapshot.docs[snapshot.docs.length - 1].id, createdAt: snapshot.docs[snapshot.docs.length - 1].get('createdAt') })
-        : null;
+    // Sort by createdAt (most recent first)
+    users.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Limit results
+    const limitedUsers = users.slice(0, limit);
 
     return {
-      results: users,
-      total: users.length,
-      nextCursor,
+      results: limitedUsers,
+      total: limitedUsers.length,
+      nextCursor: null, // Simplified - no cursor for now
     };
   } catch (error) {
     logger.error('User search failed', { error: error.message, query });
@@ -324,48 +233,74 @@ async function getTrendingPosts(options = {}) {
   const { category, cursor, limit = 20 } = options;
 
   try {
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-    let postsRef = db
-      .collection('posts')
-      .where('isDeleted', '==', false)
-      .where('createdAt', '>=', oneDayAgo);
-
-    // Apply category filter if specified
-    if (category) {
-      postsRef = postsRef.where('communityId', 'in', await getCommunityIdsByCategory(category));
-    }
-
-    postsRef = postsRef.orderBy('hotScore', 'desc');
-
-    // Apply cursor pagination
-    if (cursor) {
-      // TODO: Implement cursor-based pagination for trending posts
-    }
-
-    const snapshot = await postsRef.limit(limit).get();
+    // Very simple query - just get recent posts
+    const snapshot = await db.collection('posts').limit(50).get();
     const posts = [];
 
     snapshot.forEach(doc => {
-      posts.push({
-        id: doc.id,
-        ...doc.data(),
-      });
+      const post = doc.data();
+      if (!post.isDeleted) {
+        posts.push({
+          id: doc.id,
+          ...post,
+        });
+      }
     });
 
-    // Generate next cursor
-    const nextCursor =
-      snapshot.docs.length === limit
-        ? generateCursor(snapshot.docs[snapshot.docs.length - 1])
-        : null;
+    // Sort by createdAt (most recent first)
+    posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Limit results
+    const limitedPosts = posts.slice(0, limit);
 
     return {
-      results: posts,
-      total: posts.length,
-      nextCursor,
+      results: limitedPosts,
+      total: limitedPosts.length,
+      nextCursor: null, // Simplified - no cursor for now
     };
   } catch (error) {
     logger.error('Trending posts search failed', { error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Search men reviews by query
+ * @param {string} query - Search query
+ * @param {Object} options - Search options
+ * @returns {Object} Search results
+ */
+async function searchMenReviews(query, options = {}) {
+  const { sortBy, cursor, limit } = options;
+
+  try {
+    // Very simple query - just get all reviews and filter in memory
+    const snapshot = await db.collection('menReviews').limit(50).get();
+    const reviews = [];
+
+    snapshot.forEach(doc => {
+      const review = doc.data();
+      if (!review.isDeleted && matchesQuery(review, query)) {
+        reviews.push({
+          id: doc.id,
+          ...review,
+        });
+      }
+    });
+
+    // Sort by createdAt (most recent first)
+    reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Limit results
+    const limitedReviews = reviews.slice(0, limit);
+
+    return {
+      results: limitedReviews,
+      total: limitedReviews.length,
+      nextCursor: null, // Simplified - no cursor for now
+    };
+  } catch (error) {
+    logger.error('Men reviews search failed', { error: error.message, query });
     throw error;
   }
 }
@@ -389,6 +324,18 @@ async function getCommunityIdsByCategory(category) {
     logger.error('Failed to get community IDs by category', { error: error.message, category });
     return [];
   }
+}
+
+/**
+ * Generate cursor for pagination
+ * @param {Object} doc - Firestore document snapshot
+ * @returns {string} Encoded cursor
+ */
+function generateCursor(doc) {
+  return encodeCursor({ 
+    id: doc.id, 
+    createdAt: doc.get('createdAt') 
+  });
 }
 
 /**
@@ -422,5 +369,6 @@ module.exports = {
   searchPosts,
   searchCommunities,
   searchUsers,
+  searchMenReviews,
   getTrendingPosts,
 };

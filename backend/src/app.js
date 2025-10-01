@@ -9,7 +9,7 @@ const { logRequest } = require('./lib/logger');
 const requestIdMiddleware = require('./middlewares/requestId');
 const { errorHandler, notFoundHandler } = require('./middlewares/error');
 const { generalRateLimiter } = require('./middlewares/rateLimit');
-const ChatWebSocketGateway = require('./modules/chat/websocket');
+const UnifiedChatWebSocket = require('./modules/chat/unified/websocket');
 
 // Route modules will be imported after Firebase initialization
 
@@ -147,6 +147,7 @@ function createApp() {
 
   // Chat routes (imported after Firebase initialization)
   const chatRoutes = require('./modules/chat/routes');
+  const unifiedChatRoutes = require('./modules/chat/unified/routes');
 
   app.use('/api/v1/communities', communityRoutes);
   app.use('/api/v1/posts', postRoutes);
@@ -155,6 +156,7 @@ function createApp() {
   app.use('/api/v1/search', searchRoutes);
   app.use('/api/v1/storage', storageRoutes);
   app.use('/api/v1/chat', chatRoutes);
+  app.use('/api/v1/chat', unifiedChatRoutes);
   app.use('/api/v1/reviews', menReviewsRoutes);
 
   // Feed-specific routes
@@ -178,13 +180,19 @@ function createApp() {
     require('./modules/posts/controller').getSavedPosts
   );
 
-  // KYC and admin routes (feature-flagged)
+  // Admin and IT dashboard routes (always enabled)
   const adminRoutes = require('./modules/admin/routes');
+  const itRoutes = require('./modules/it/routes');
   const webhookRoutes = require('./webhooks/routes');
   const auditRoutes = require('./modules/audit/routes');
   const jobRoutes = require('./jobs/routes');
+  
+  // Always enable admin and IT dashboards for AI verification system
+  app.use('/api/v1/admin', adminRoutes);
+  app.use('/api/v1/it', itRoutes);
+  
+  // Webhook routes (feature-flagged)
   if (features.kyc) {
-    app.use('/api/v1/admin', adminRoutes);
     app.use('/api/v1/webhooks', webhookRoutes);
   }
 
@@ -219,9 +227,9 @@ function startServer() {
       });
     });
 
-    // Initialize WebSocket gateway
-    const wsGateway = new ChatWebSocketGateway(server);
-    
+    // Initialize Unified WebSocket gateway
+    const wsGateway = new UnifiedChatWebSocket(server);
+
     // Make WebSocket gateway globally available
     global.wsGateway = wsGateway;
 

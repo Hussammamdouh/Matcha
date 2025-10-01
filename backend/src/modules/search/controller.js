@@ -4,7 +4,7 @@ const searchService = require('./service');
 const logger = createModuleLogger();
 
 /**
- * Global search across all content types
+ * Enhanced global search across all content types with sections
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
@@ -25,30 +25,36 @@ async function globalSearch(req, res) {
       category,
       sortBy,
       cursor,
-      limit: limit ? parseInt(limit) : 20,
+      limit: limit ? parseInt(limit) : 10, // Default to 10 per section
     });
 
-    logger.info('Global search request processed', {
+    logger.info('Enhanced global search request processed', {
       userId: req.user?.uid,
       query,
       type,
       totalResults: results.meta.totalResults,
+      sectionsFound: results.meta.sectionsFound,
     });
 
     res.json({
       ok: true,
-      data: results,
-      meta: {
+      data: {
         query,
-        type: type || 'all',
-        category: category || null,
-        sortBy: sortBy || 'relevance',
-        totalResults: results.meta.totalResults,
-        hasNextPage: !!results.meta.nextCursor,
+        sections: results.sections,
+        meta: {
+          query,
+          type: type || 'all',
+          category: category || null,
+          sortBy: sortBy || 'relevance',
+          totalResults: results.meta.totalResults,
+          sectionsFound: results.meta.sectionsFound,
+          hasNextPage: !!results.meta.nextCursor,
+          nextCursor: results.meta.nextCursor,
+        },
       },
     });
   } catch (error) {
-    logger.error('Global search failed', {
+    logger.error('Enhanced global search failed', {
       error: error.message,
       userId: req.user?.uid,
       query: req.query.q,
@@ -240,6 +246,63 @@ async function searchUsers(req, res) {
 }
 
 /**
+ * Search men reviews only
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+async function searchMenReviews(req, res) {
+  try {
+    const { q: query, sortBy, cursor, limit } = req.query;
+
+    if (!query || query.trim() === '') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Search query is required',
+        code: 'MISSING_QUERY',
+      });
+    }
+
+    const results = await searchService.searchMenReviews(query, {
+      sortBy,
+      cursor,
+      limit: limit ? parseInt(limit) : 20,
+    });
+
+    logger.info('Men reviews search request processed', {
+      userId: req.user?.uid,
+      query,
+      totalResults: results.total,
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        menReviews: results.results,
+        total: results.total,
+      },
+      meta: {
+        query,
+        sortBy: sortBy || 'relevance',
+        hasNextPage: !!results.nextCursor,
+        nextCursor: results.nextCursor,
+      },
+    });
+  } catch (error) {
+    logger.error('Men reviews search failed', {
+      error: error.message,
+      userId: req.user?.uid,
+      query: req.query.q,
+    });
+
+    res.status(500).json({
+      ok: false,
+      error: 'Men reviews search failed',
+      code: 'SEARCH_ERROR',
+    });
+  }
+}
+
+/**
  * Get trending posts
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -291,5 +354,6 @@ module.exports = {
   searchPosts,
   searchCommunities,
   searchUsers,
+  searchMenReviews,
   getTrendingPosts,
 };

@@ -14,6 +14,7 @@ const {
   searchPosts,
   searchCommunities,
   searchUsers,
+  searchMenReviews,
   getTrendingPosts,
 } = require('./controller');
 
@@ -46,8 +47,8 @@ router.get(
         });
       }
 
-      const searchTypes = types ? types.split(',') : ['posts', 'users', 'communities'];
-      const validTypes = ['posts', 'users', 'communities', 'trending'];
+      const searchTypes = types ? types.split(',') : ['posts', 'users', 'communities', 'menReviews'];
+      const validTypes = ['posts', 'users', 'communities', 'menReviews', 'trending'];
       
       const invalidTypes = searchTypes.filter(type => !validTypes.includes(type));
       if (invalidTypes.length > 0) {
@@ -95,6 +96,12 @@ router.get(
         );
       }
 
+      if (searchTypes.includes('menReviews')) {
+        searchPromises.push(
+          searchMenReviews({ ...req, query: { ...req.query, q, limit, offset, ...parsedFilters } }, { json: (data) => results.menReviews = data })
+        );
+      }
+
       if (searchTypes.includes('trending')) {
         searchPromises.push(
           getTrendingPosts({ ...req, query: { ...req.query, limit, offset, ...parsedFilters } }, { json: (data) => results.trending = data })
@@ -134,7 +141,14 @@ router.get(
   validate,
   searchPosts
 );
-router.get('/communities', communitySearchValidation, validate, searchCommunities);
+router.get(
+  '/communities',
+  authenticateToken,
+  generalRateLimiter,
+  communitySearchValidation,
+  validate,
+  searchCommunities
+);
 router.get(
   '/users',
   authenticateToken,
@@ -144,7 +158,24 @@ router.get(
   searchUsers
 );
 
+// Search men reviews
+router.get(
+  '/menReviews',
+  authenticateToken,
+  generalRateLimiter,
+  userSearchValidation,
+  validate,
+  searchMenReviews
+);
+
 // Trending posts
-router.get('/trending', trendingPostsValidation, validate, getTrendingPosts);
+router.get(
+  '/trending',
+  authenticateToken,
+  generalRateLimiter,
+  trendingPostsValidation,
+  validate,
+  getTrendingPosts
+);
 
 module.exports = router;

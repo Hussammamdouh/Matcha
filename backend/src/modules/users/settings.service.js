@@ -418,6 +418,27 @@ async function getDetailedBlockedUsers(userId, options = {}) {
   }
 }
 
+/**
+ * Check if one user follows another
+ * @param {string} followerId - ID of the user who might be following
+ * @param {string} followedId - ID of the user who might be followed
+ * @returns {Promise<boolean>} True if follower follows followed
+ */
+async function checkFollowRelationship(followerId, followedId) {
+  db = db || getFirestore();
+  try {
+    if (!followerId || !followedId || followerId === followedId) {
+      return false;
+    }
+
+    const followDoc = await db.collection('follows').doc(`${followerId}_${followedId}`).get();
+    return followDoc.exists;
+  } catch (error) {
+    logger.error('Failed to check follow relationship', { error: error.message, followerId, followedId });
+    return false;
+  }
+}
+
 module.exports = {
   getUserSettings,
   updateUserSettings,
@@ -425,4 +446,5 @@ module.exports = {
   getDetailedFollowers,
   getDetailedFollowing,
   getDetailedBlockedUsers,
+  checkFollowRelationship,
 };

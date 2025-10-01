@@ -1,6 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { config } = require('../config');
-const logger = require('../lib/logger');
+const { logger } = require('../lib/logger');
 
 // Redis removed; using in-memory store only
 let redisClient = null;

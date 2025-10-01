@@ -22,6 +22,8 @@ const {
   savePost,
   unsavePost,
   getHomeFeed,
+  getUnifiedHomeFeed,
+  getRecommendedCommunities,
   getCommunityPosts,
   getSavedPosts,
 } = require('./controller');
@@ -254,6 +256,24 @@ router.get(
   getFeedValidation,
   validate,
   getHomeFeed
+);
+
+// GET /api/v1/posts/feed/unified - Unified home feed (posts + men reviews from joined communities)
+router.get(
+  '/feed/unified',
+  authenticateToken,
+  generalRateLimiter,
+  getFeedValidation,
+  validate,
+  getUnifiedHomeFeed
+);
+
+// GET /api/v1/posts/feed/recommendations - Recommended communities for new users
+router.get(
+  '/feed/recommendations',
+  authenticateToken,
+  generalRateLimiter,
+  getRecommendedCommunities
 );
 
 // GET /api/v1/posts/feed/saved - Saved posts feed

@@ -163,6 +163,110 @@ async function getUserFollowing(req, res) {
 }
 
 /**
+ * Get user's posts with privacy checks
+ * GET /api/v1/users/:id/posts
+ * 
+ * Access rules:
+ * 1. If requester is the owner, always allow access
+ * 2. If profile is public, allow access to anyone
+ * 3. If profile is private, only allow access if requester follows the target user
+ */
+async function getUserPosts(req, res) {
+  const logger = createRequestLogger(req.id);
+  try {
+    const targetId = req.params.id;
+    const requesterId = req.user?.uid || null;
+    const { pageSize = 20, cursor = null } = req.query;
+    
+    // Check if target user exists
+    const firestore = getFirestore();
+    const userDoc = await firestore.collection('users').doc(targetId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ 
+        ok: false, 
+        error: { code: 'USER_NOT_FOUND', message: 'User not found' } 
+      });
+    }
+
+    // Get user settings to check privacy
+    const settings = await require('./settings.service').getUserSettings(targetId);
+    const isPrivate = settings.accountPrivacy === 'private';
+
+    // Access control logic
+    let hasAccess = false;
+    
+    if (requesterId === targetId) {
+      // Owner can always access their own posts
+      hasAccess = true;
+      logger.info('User accessing their own posts', { requesterId, targetId });
+    } else if (!isPrivate) {
+      // Public profile - anyone can access
+      hasAccess = true;
+      logger.info('User accessing public profile posts', { requesterId, targetId });
+    } else {
+      // Private profile - check if requester follows the target user
+      if (requesterId) {
+        const settingsService = require('./settings.service');
+        const isFollowing = await settingsService.checkFollowRelationship(requesterId, targetId);
+        hasAccess = isFollowing;
+        
+        if (hasAccess) {
+          logger.info('User accessing private profile posts via follow relationship', { requesterId, targetId });
+        } else {
+          logger.info('User denied access to private profile - not following', { requesterId, targetId });
+        }
+      } else {
+        logger.info('Unauthenticated user denied access to private profile', { targetId });
+      }
+    }
+
+    // If access is denied, return appropriate error
+    if (!hasAccess) {
+      if (!requesterId) {
+        return res.status(401).json({ 
+          ok: false, 
+          error: { code: 'UNAUTHORIZED', message: 'Authentication required to view this profile' } 
+        });
+      } else {
+        return res.status(403).json({ 
+          ok: false, 
+          error: { code: 'PRIVATE_PROFILE', message: 'This account is private. Follow this user to view their posts.' } 
+        });
+      }
+    }
+
+    // Use the posts service to get user's posts with proper filtering and pagination
+    const result = await postsService.listPosts({
+      authorId: targetId,
+      pageSize: parseInt(pageSize, 10),
+      cursor,
+      userId: requesterId // Include requester ID for vote status
+    });
+
+    return res.json({
+      ok: true,
+      data: result.posts,
+      meta: {
+        pagination: result.pagination,
+        requestId: req.id
+      }
+    });
+
+  } catch (error) {
+    logger.error('Failed to get user posts', { 
+      error: error.message, 
+      stack: error.stack,
+      targetId: req.params.id,
+      requesterId: req.user?.uid 
+    });
+    return res.status(500).json({ 
+      ok: false, 
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to get user posts' } 
+    });
+  }
+}
+
+/**
  * Update current user profile
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -733,6 +837,7 @@ module.exports = {
   getUserLikedPosts,
   getUserFollowers,
   getUserFollowing,
+  getUserPosts,
   updateProfile,
   sendEmailVerification,
   logout,

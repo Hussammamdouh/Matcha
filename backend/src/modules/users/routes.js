@@ -88,15 +88,158 @@ const router = express.Router();
  *       401:
  *         description: Authentication required
  */
+// Order matters: define specific /me routes before generic /:id routes to avoid collisions when mounted at /api/v1/me
 router.get('/', authenticateToken, asyncHandler(userController.getProfile));
-// Public user endpoints with privacy
-router.get('/:id', authenticateToken, asyncHandler(userController.getPublicProfile));
-router.get('/:id/likes', authenticateToken, asyncHandler(userController.getUserLikedPosts));
-router.get('/:id/followers', authenticateToken, asyncHandler(userController.getUserFollowers));
-router.get('/:id/following', authenticateToken, asyncHandler(userController.getUserFollowing));
 router.get('/stats', authenticateToken, asyncHandler(userController.getMyStatsAndPosts));
 router.get('/likes', authenticateToken, asyncHandler(userController.getMyLikedPosts));
 router.get('/saves', authenticateToken, asyncHandler(postsController.getSavedPosts));
+
+// Public user endpoints with privacy (mounted at /api/v1/users)
+router.get('/:id', authenticateToken, asyncHandler(userController.getPublicProfile));
+router.get('/:id/likes', authenticateToken, asyncHandler(userController.getUserLikedPosts));
+
+/**
+ * @swagger
+ * /api/v1/users/{id}/posts:
+ *   get:
+ *     summary: Get user's posts with privacy and follow checks
+ *     description: |
+ *       Retrieves posts from a user's profile based on privacy settings and follow relationships.
+ *       
+ *       Access Rules:
+ *       - If requester is the owner, always allow access
+ *       - If profile is public, allow access to anyone
+ *       - If profile is private, only allow access if requester follows the target user
+ *     tags: [User Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *         description: Number of posts per page
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Pagination cursor
+ *     responses:
+ *       200:
+ *         description: User posts retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       title:
+ *                         type: string
+ *                       body:
+ *                         type: string
+ *                       authorId:
+ *                         type: string
+ *                       authorNickname:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                       score:
+ *                         type: integer
+ *                       commentCount:
+ *                         type: integer
+ *                       userVote:
+ *                         type: integer
+ *                         enum: [-1, 0, 1]
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         hasNext:
+ *                           type: boolean
+ *                         nextCursor:
+ *                           type: string
+ *       401:
+ *         description: Authentication required (for private profiles)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       example: UNAUTHORIZED
+ *                     message:
+ *                       type: string
+ *                       example: Authentication required to view this profile
+ *       403:
+ *         description: Profile is private and user is not following
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       example: PRIVATE_PROFILE
+ *                     message:
+ *                       type: string
+ *                       example: This account is private. Follow this user to view their posts.
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ok:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       example: USER_NOT_FOUND
+ *                     message:
+ *                       type: string
+ *                       example: User not found
+ */
+router.get('/:id/posts', authenticateToken, asyncHandler(userController.getUserPosts));
+router.get('/:id/followers', authenticateToken, asyncHandler(userController.getUserFollowers));
+router.get('/:id/following', authenticateToken, asyncHandler(userController.getUserFollowing));
 
 // Follow/unfollow endpoints
 router.post('/follow/:targetUid', authenticateToken, asyncHandler(followController.followUser));

@@ -1,10 +1,9 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const { body } = require('express-validator');
 const { authenticateToken } = require('../../middlewares/auth');
 const {
   authRateLimiter,
   passwordResetLimiter,
-  emailVerificationLimiter,
 } = require('../../middlewares/rateLimit');
 const { asyncHandler } = require('../../middlewares/error');
 const authController = require('./controller');
@@ -137,7 +136,8 @@ router.post(
 router.post(
   '/register/selfie',
   authRateLimiter,
-  [body('userId').isString().notEmpty(), body('imageUrl').isURL()],
+  directUpload({ namespace: 'selfies' }),
+  [body('userId').isString().notEmpty(), body('imageUrl').optional().isURL()],
   asyncHandler(selfieController.processSelfie)
 );
 

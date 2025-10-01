@@ -40,6 +40,7 @@ const {
 } = require('./moderation.validators');
 
 const router = express.Router();
+const directUpload = require('../../middlewares/directUpload');
 
 /**
  * Communities API Routes
@@ -51,6 +52,7 @@ router.post(
   '/',
   authenticateToken,
   generalRateLimiter,
+  directUpload({ namespace: 'communities' }),
   createCommunityValidation,
   validate,
   createCommunity
@@ -67,6 +69,7 @@ router.patch(
   '/:id',
   authenticateToken,
   generalRateLimiter,
+  directUpload({ namespace: 'communities' }),
   updateCommunityValidation,
   validate,
   updateCommunity

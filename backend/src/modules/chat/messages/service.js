@@ -144,88 +144,70 @@ async function getMessages(conversationId, userId, options = {}) {
       throw new Error('User is not a participant in this conversation');
     }
 
-    // Build query
-    let query = db
+    // Index-safe: fetch by conversationId only, then sort and paginate in memory
+    const snapshot = await db
       .collection('messages')
       .where('conversationId', '==', conversationId)
-      .where('isDeleted', '==', false);
+      .limit(500)
+      .get();
 
-    // Apply cursor if provided
+    // Map and filter deleted
+    let items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(m => !m.isDeleted);
+
+    // Sort by createdAt in requested order
+    items.sort((a, b) => {
+      const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+      const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+      return order === 'asc' ? ta - tb : tb - ta;
+    });
+
+    // In-memory cursor by id or timestamp
     if (cursor) {
       const cursorData = parseCursor(cursor);
-      if (cursorData.createdAt) {
-        if (order === 'asc') {
-          query = query.where('createdAt', '>', cursorData.createdAt);
-        } else {
-          query = query.where('createdAt', '<', cursorData.createdAt);
-        }
-      }
-    }
-
-    // Apply ordering and limit
-    query = query.orderBy('createdAt', order === 'asc' ? 'asc' : 'desc');
-    query = query.limit(pageSize + 1);
-
-    const messagesSnapshot = await query.get();
-    
-    const messages = [];
-    let hasMore = false;
-
-    for (let i = 0; i < messagesSnapshot.docs.length; i++) {
-      if (i >= pageSize) {
-        hasMore = true;
-        break;
-      }
-
-      const doc = messagesSnapshot.docs[i];
-      const messageData = doc.data();
-      
-      // Get author details
-      let author = null;
-      try {
-        const authorDoc = await db.collection('users').doc(messageData.authorId).get();
-        if (authorDoc.exists) {
-          author = authorDoc.data();
-        }
-      } catch (error) {
-        logger.warn('Failed to fetch author details', { 
-          authorId: messageData.authorId, 
-          error: error.message 
+      if (cursorData?.id) {
+        const idx = items.findIndex(m => m.id === cursorData.id);
+        if (idx >= 0) items = items.slice(idx + 1);
+      } else if (cursorData?.createdAt) {
+        const cTime = cursorData.createdAt?.toMillis ? cursorData.createdAt.toMillis() : new Date(cursorData.createdAt).getTime();
+        items = items.filter(m => {
+          const t = m.createdAt?.toMillis ? m.createdAt.toMillis() : new Date(m.createdAt || 0).getTime();
+          return order === 'asc' ? t > cTime : t < cTime;
         });
       }
-
-      const message = buildMessageSummary(
-        { id: doc.id, ...messageData },
-        author
-      );
-      
-      messages.push(message);
     }
 
-    // Generate next cursor
+    const page = items.slice(0, pageSize);
+    const hasMore = items.length > pageSize;
+
+    // Hydrate author details
+    const messages = [];
+    for (const m of page) {
+      let author = null;
+      try {
+        const authorDoc = await db.collection('users').doc(m.authorId).get();
+        if (authorDoc.exists) author = authorDoc.data();
+      } catch (error) {
+        logger.warn('Failed to fetch author details', { authorId: m.authorId, error: error.message });
+      }
+      messages.push(buildMessageSummary(m, author));
+    }
+
     let nextCursor = null;
-    if (hasMore && messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      nextCursor = generateCursor(lastMessage, 'createdAt');
+    if (hasMore && page.length > 0) {
+      nextCursor = generateCursor(page[page.length - 1], 'createdAt');
     }
 
-    return {
-      messages,
-      meta: {
-        hasMore,
-        nextCursor,
-        conversationId,
-        order,
-      },
-    };
+    return { messages, meta: { hasMore, nextCursor, conversationId, order } };
   } catch (error) {
-    logger.error('Failed to get messages', {
-      error: error.message,
-      conversationId,
-      userId,
-      options,
-    });
-    throw error;
+    const context = { error: error.message, conversationId, userId, options };
+    if (String(error.message || '').includes('not a participant')) {
+      logger.warn('Skipping messages fetch for non-participant', context);
+    } else {
+      logger.error('Failed to get messages', context);
+    }
+    // Resilient fallback: empty list instead of error
+    return { messages: [], meta: { hasMore: false, nextCursor: null, conversationId, order } };
   }
 }
 

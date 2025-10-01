@@ -6,6 +6,7 @@ const { caches } = require('../../lib/cache');
 const { encodeCursor, decodeCursor } = require('../../lib/pagination');
 const { validateMedia } = require('../../lib/storage');
 const votesService = require('../votes/service');
+const { getUserVotedMen } = require('../menReviews/service');
 
 
 const logger = createModuleLogger();
@@ -14,6 +15,357 @@ const logger = createModuleLogger();
  * Posts service for Matcha
  * Handles all Firestore operations for posts and feed generation
  */
+
+/**
+ * Build a map of userId -> avatarUrl by fetching user docs in parallel
+ * @param {string[]} userIds
+ * @returns {Promise<Record<string,string|null>>}
+ */
+async function getUserAvatarMap(userIds) {
+  try {
+    const uniqueIds = [...new Set((userIds || []).filter(Boolean))];
+    if (uniqueIds.length === 0) return {};
+
+    const snapshots = await Promise.all(
+      uniqueIds.map(id => db.collection('users').doc(id).get().catch(() => null))
+    );
+
+    const map = {};
+    snapshots.forEach((snap, index) => {
+      const uid = uniqueIds[index];
+      if (snap && snap.exists) {
+        const data = snap.data() || {};
+        map[uid] = data.avatarUrl || null;
+      } else {
+        map[uid] = null;
+      }
+    });
+    return map;
+  } catch (error) {
+    logger.warn('Failed to build user avatar map (continuing without avatars)', { error: error.message, count: userIds?.length || 0 });
+    return {};
+  }
+}
+
+/**
+ * Get user's vote status for multiple posts
+ * @param {Array} postIds - Array of post IDs
+ * @param {string} userId - User ID
+ * @returns {Object} Map of postId -> vote value
+ */
+async function getUserVotesForPosts(postIds, userId) {
+  if (!postIds || postIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const votePromises = postIds.map(postId => 
+      db.collection('posts').doc(postId).collection('votes').doc(userId).get()
+        .catch(() => ({ exists: false }))
+    );
+    
+    const voteSnapshots = await Promise.all(votePromises);
+    const voteMap = {};
+    
+    voteSnapshots.forEach((snap, index) => {
+      const postId = postIds[index];
+      voteMap[postId] = snap.exists ? snap.data().value : null;
+    });
+    
+    return voteMap;
+  } catch (error) {
+    logger.error('Failed to get user votes for posts', {
+      error: error.message,
+      userId,
+      postCount: postIds.length,
+    });
+    return {};
+  }
+}
+
+/**
+ * Get fallback feed for users with no communities/follows
+ * Shows trending posts from public communities
+ * @param {string} userId - User ID
+ * @param {Object} options - Query options
+ * @returns {Object} Fallback posts list
+ */
+async function getFallbackFeed(userId, options = {}) {
+  try {
+    const { sort = 'hot', pageSize = 20, cursor = null } = options;
+    
+    logger.info('Getting fallback feed for user with no communities/follows', { userId });
+
+    // Get trending posts from public communities
+    const trendingQuery = db.collection('posts')
+      .where('isDeleted', '==', false)
+      .where('visibility', '==', 'public')
+      .limit(100);
+
+    const snapshot = await trendingQuery.get();
+    let posts = [];
+    
+    snapshot.forEach(doc => {
+      posts.push({ id: doc.id, ...doc.data() });
+    });
+
+    // Sort by engagement metrics
+    switch (sort) {
+      case 'hot':
+        posts.sort((a, b) => (b.hotScore || 0) - (a.hotScore || 0));
+        break;
+      case 'new':
+        posts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        break;
+      case 'top_24h':
+      case 'top_7d':
+      case 'top_all':
+        posts.sort((a, b) => (b.score || 0) - (a.score || 0));
+        break;
+      default:
+        posts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+    }
+
+    // Get user's vote status
+    const postIds = posts.map(p => p.id);
+    const userVotes = await getUserVotesForPosts(postIds, userId);
+
+    // Add user vote status and fallback flag
+    posts = posts.map(post => ({
+      ...post,
+      userVote: userVotes[post.id] || null,
+      isFallbackContent: true, // Flag to indicate this is fallback content
+    }));
+
+    // Apply pagination
+    const startIndex = cursor ? parseInt(cursor) : 0;
+    const paged = posts.slice(startIndex, startIndex + pageSize);
+    const hasMore = startIndex + pageSize < posts.length;
+    const nextCursor = hasMore ? (startIndex + pageSize).toString() : null;
+
+    return {
+      posts: paged,
+      pagination: {
+        pageSize,
+        hasMore,
+        nextCursor,
+      },
+      meta: {
+        isFallbackFeed: true,
+        message: 'Showing trending posts from public communities. Join communities or follow users for personalized content!'
+      }
+    };
+  } catch (error) {
+    logger.error('Failed to get fallback feed', {
+      error: error.message,
+      userId,
+      options,
+    });
+    // Return empty feed if fallback fails
+    return { posts: [], pagination: { pageSize: options.pageSize || 20, hasMore: false, nextCursor: null } };
+  }
+}
+
+/**
+ * Get unified fallback feed for users with no communities
+ * Shows trending posts and men reviews from public communities
+ * @param {string} userId - User ID
+ * @param {Object} options - Query options
+ * @returns {Object} Fallback unified feed list
+ */
+async function getUnifiedFallbackFeed(userId, options = {}) {
+  try {
+    const { sort = 'hot', pageSize = 20, cursor = null } = options;
+    
+    logger.info('Getting unified fallback feed for user with no communities', { userId });
+
+    // Get trending posts and men reviews from public communities
+    const [postsSnapshot, reviewsSnapshot] = await Promise.all([
+      db.collection('posts')
+        .where('isDeleted', '==', false)
+        .where('visibility', '==', 'public')
+        .limit(50)
+        .get(),
+      db.collection('menReviews')
+        .limit(50)
+        .get()
+    ]);
+
+    // Process posts
+    let posts = [];
+    postsSnapshot.forEach(doc => {
+      const postData = doc.data();
+      posts.push({
+        id: doc.id,
+        ...postData,
+        contentType: 'post',
+        type: 'post',
+        isFallbackContent: true,
+      });
+    });
+
+    // Process men reviews (no vote filtering for fallback)
+    let reviews = [];
+    reviewsSnapshot.forEach(doc => {
+      const reviewData = doc.data();
+      reviews.push({
+        id: doc.id,
+        ...reviewData,
+        contentType: 'menReview',
+        type: 'menReview',
+        isFallbackContent: true,
+        // Add post-like fields for consistency
+        title: `Men Review - ${reviewData.label || 'Unknown'}`,
+        body: reviewData.comment || '',
+        authorId: reviewData.voterId,
+        authorNickname: null,
+        upvotes: (reviewData.counts?.green || 0),
+        downvotes: (reviewData.counts?.red || 0),
+        score: (reviewData.counts?.green || 0) - (reviewData.counts?.red || 0),
+        hotScore: 0,
+        commentCount: 0,
+        media: reviewData.media || []
+      });
+    });
+
+    // Get user's vote status for posts
+    const postIds = posts.map(p => p.id);
+    const userVotes = await getUserVotesForPosts(postIds, userId);
+
+    // Add user vote status to posts
+    posts = posts.map(post => ({
+      ...post,
+      userVote: userVotes[post.id] || null,
+    }));
+
+    // Fetch user data for reviews
+    const voterIds = [...new Set(reviews.map(r => r.voterId).filter(Boolean))];
+    const userPromises = voterIds.map(voterId => 
+      db.collection('users').doc(voterId).get().catch(() => null)
+    );
+    const userSnapshots = await Promise.all(userPromises);
+    const userMap = {};
+    userSnapshots.forEach((snap, index) => {
+      if (snap && snap.exists) {
+        userMap[voterIds[index]] = snap.data();
+      }
+    });
+
+    // Update reviews with author nicknames and avatar URLs
+    reviews = reviews.map(review => ({
+      ...review,
+      authorNickname: userMap[review.voterId]?.nickname || 'Unknown User',
+      authorAvatarUrl: userMap[review.voterId]?.avatarUrl || null,
+    }));
+
+    // Combine posts and reviews
+    let feed = [...posts, ...reviews];
+
+    // Sort unified feed
+    switch (sort) {
+      case 'hot':
+        feed.sort((a, b) => (b.hotScore || 0) - (a.hotScore || 0));
+        break;
+      case 'new':
+        feed.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+        break;
+      case 'top_24h':
+      case 'top_7d':
+      case 'top_all':
+        feed.sort((a, b) => (b.score || 0) - (a.score || 0));
+        break;
+      default:
+        feed.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+    }
+
+    // Apply pagination
+    const startIndex = cursor ? parseInt(cursor) : 0;
+    const paged = feed.slice(startIndex, startIndex + pageSize);
+    const hasMore = startIndex + pageSize < feed.length;
+    const nextCursor = hasMore ? (startIndex + pageSize).toString() : null;
+
+    return {
+      feed: paged,
+      pagination: {
+        pageSize,
+        hasMore,
+        nextCursor,
+      },
+      meta: {
+        isFallbackFeed: true,
+        message: 'Showing trending content from public communities. Join communities for personalized content!'
+      }
+    };
+  } catch (error) {
+    logger.error('Failed to get unified fallback feed', {
+      error: error.message,
+      userId,
+      options,
+    });
+    // Return empty feed if fallback fails
+    return { feed: [], pagination: { pageSize: options.pageSize || 20, hasMore: false, nextCursor: null } };
+  }
+}
+
+/**
+ * Get recommended communities for users with no communities
+ * @param {string} userId - User ID
+ * @param {Object} options - Query options
+ * @returns {Object} Recommended communities
+ */
+async function getRecommendedCommunities(userId, options = {}) {
+  try {
+    const { limit = 10 } = options;
+    
+    logger.info('Getting recommended communities for user', { userId });
+
+    // Get popular communities (by member count and post count)
+    const communitiesQuery = db.collection('communities')
+      .where('isActive', '==', true)
+      .limit(50);
+
+    const snapshot = await communitiesQuery.get();
+    let communities = [];
+    
+    snapshot.forEach(doc => {
+      const communityData = doc.data();
+      communities.push({
+        id: doc.id,
+        ...communityData,
+        // Calculate popularity score
+        popularityScore: (communityData.memberCount || 0) + (communityData.postCount || 0) * 2
+      });
+    });
+
+    // Sort by popularity score
+    communities.sort((a, b) => b.popularityScore - a.popularityScore);
+
+    // Take top communities
+    const recommended = communities.slice(0, limit);
+
+    return {
+      communities: recommended,
+      meta: {
+        message: 'Join these popular communities to see personalized content in your feed!'
+      }
+    };
+  } catch (error) {
+    logger.error('Failed to get recommended communities', {
+      error: error.message,
+      userId,
+      options,
+    });
+    return { communities: [], meta: { message: 'Unable to load community recommendations' } };
+  }
+}
 
 /**
  * Create a new post
@@ -284,11 +636,11 @@ async function getPost(postId, userId = null) {
 
 /**
  * List posts (public + by filters)
- * Supports optional filters: authorId, communityId, visibility, pageSize, cursor
+ * Supports optional filters: authorId, communityId, visibility, pageSize, cursor, userId
  */
 async function listPosts(filters = {}) {
   try {
-    const { authorId, communityId, visibility, pageSize = 20, cursor = null } = filters;
+    const { authorId, communityId, visibility, pageSize = 20, cursor = null, userId = null } = filters;
 
     // Build a relaxed query to avoid composite index pitfalls
     let query = db.collection('posts');
@@ -318,6 +670,25 @@ async function listPosts(filters = {}) {
     }
 
     const page = items.slice(startIndex, startIndex + pageSize);
+    
+    // Add user vote status if userId provided
+    if (userId && page.length > 0) {
+      const postIds = page.map(p => p.id);
+      const userVotes = await getUserVotesForPosts(postIds, userId);
+      
+      page.forEach(post => {
+        post.userVote = userVotes[post.id] || null;
+      });
+    }
+    // Enrich with author avatar URLs
+    if (page.length > 0) {
+      const authorIds = page.map(p => p.authorId).filter(Boolean);
+      const avatarMap = await getUserAvatarMap(authorIds);
+      page.forEach(post => {
+        post.authorAvatarUrl = avatarMap[post.authorId] || null;
+      });
+    }
+    
     const next = startIndex + pageSize < items.length ? encodeCursor({ id: page[page.length - 1].id }) : null;
 
     return {
@@ -602,47 +973,23 @@ async function getHomeFeed(userId, options = {}) {
   try {
     const { sort = 'hot', pageSize = 20, cursor = null } = options;
     
-    // Get user's joined communities and followed users
-    const [membershipsQuery, followsQuery] = await Promise.all([
-      db.collection('community_members').where('userId', '==', userId).get(),
-      db.collection('follows').where('followerId', '==', userId).get(),
-    ]);
+    logger.info('Getting home feed', { userId, sort, pageSize });
 
-    const communityIds = membershipsQuery.empty ? [] : membershipsQuery.docs.map(doc => doc.data().communityId);
-    const followedUserIds = followsQuery.empty ? [] : followsQuery.docs.map(doc => doc.data().followedId);
+    // Simplified approach: get all posts and filter in memory
+    // This avoids complex Firestore queries that might fail
+    const postsSnapshot = await db.collection('posts')
+      .where('isDeleted', '==', false)
+      .limit(100)
+      .get();
 
-    // Build query: posts from joined communities OR public posts from followed users
-    const baseQuery = db.collection('posts').where('isDeleted', '==', false);
-
-    // Firestore OR requires composite strategies; we'll do two queries and merge
-    const queries = [];
-
-    if (communityIds.length > 0) {
-      let q = baseQuery.where('communityId', 'in', communityIds);
-      queries.push(q);
-    }
-
-    if (followedUserIds.length > 0) {
-      let q = baseQuery.where('authorId', 'in', followedUserIds).where('visibility', '==', 'public');
-      queries.push(q);
-    }
-
-    if (queries.length === 0) {
-      return { posts: [], pagination: { pageSize, hasMore: false, nextCursor: null } };
-    }
-
-    // Execute sub-queries
-    const snapshots = await Promise.all(queries.map(q => q.get()));
     let posts = [];
-    for (const snapshot of snapshots) {
-      snapshot.forEach(doc => {
-        posts.push({ id: doc.id, ...doc.data() });
+    postsSnapshot.forEach(doc => {
+      posts.push({ 
+        id: doc.id, 
+        ...doc.data(),
+        postType: 'normal' // Flag to differentiate from men reviews
       });
-    }
-
-    // De-dupe by id
-    const seen = new Set();
-    posts = posts.filter(p => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+    });
 
     // Sort in-memory per sort param
     switch (sort) {
@@ -650,7 +997,11 @@ async function getHomeFeed(userId, options = {}) {
         posts.sort((a, b) => (b.hotScore || 0) - (a.hotScore || 0));
         break;
       case 'new':
-        posts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        posts.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
         break;
       case 'top_24h':
       case 'top_7d':
@@ -658,7 +1009,58 @@ async function getHomeFeed(userId, options = {}) {
         posts.sort((a, b) => (b.score || 0) - (a.score || 0));
         break;
       default:
-        posts.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+        posts.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+    }
+
+    // Get user's vote status for all posts
+    const postIds = posts.map(p => p.id);
+    const userVotes = await getUserVotesForPosts(postIds, userId);
+
+    // Add user vote status to posts
+    posts = posts.map(post => ({
+      ...post,
+      userVote: userVotes[post.id] || null,
+    }));
+
+    // Check community membership for posts with communityId
+    const { checkMembership } = require('../communities/service');
+    const communityIds = posts
+      .filter(post => post.communityId)
+      .map(post => post.communityId);
+    
+    // Get unique community IDs
+    const uniqueCommunityIds = [...new Set(communityIds)];
+    
+    // Check membership for all unique communities
+    const membershipPromises = uniqueCommunityIds.map(communityId => 
+      checkMembership(communityId, userId)
+    );
+    const memberships = await Promise.all(membershipPromises);
+    
+    // Create membership map
+    const membershipMap = {};
+    uniqueCommunityIds.forEach((communityId, index) => {
+      membershipMap[communityId] = !!memberships[index];
+    });
+
+    // Add community membership flag to posts
+    posts = posts.map(post => ({
+      ...post,
+      isJoinedCommunity: post.communityId ? membershipMap[post.communityId] || false : null,
+    }));
+
+    // Enrich with author avatar URLs
+    if (posts.length > 0) {
+      const authorIds = posts.map(p => p.authorId).filter(Boolean);
+      const avatarMap = await getUserAvatarMap(authorIds);
+      posts = posts.map(post => ({
+        ...post,
+        authorAvatarUrl: avatarMap[post.authorId] || null,
+      }));
     }
 
     // Pagination in-memory
@@ -683,6 +1085,168 @@ async function getHomeFeed(userId, options = {}) {
     return result;
   } catch (error) {
     logger.error('Failed to get home feed', {
+      error: error.message,
+      userId,
+      options,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Get unified home feed (posts + men reviews from joined communities)
+ *
+ * @param {string} userId - User ID
+ * @param {Object} options - Query options
+ * @returns {Object} Paginated unified feed list
+ */
+async function getUnifiedHomeFeed(userId, options = {}) {
+  try {
+    const { sort = 'hot', pageSize = 20, cursor = null } = options;
+    
+    logger.info('Getting unified home feed', { userId, sort, pageSize });
+
+    // Simplified approach: get posts and reviews separately
+    const [postsSnapshot, reviewsSnapshot] = await Promise.all([
+      db.collection('posts')
+        .where('isDeleted', '==', false)
+        .limit(50)
+        .get(),
+      db.collection('menReviews')
+        .limit(50)
+        .get()
+    ]);
+
+    // Process posts
+    let posts = [];
+    postsSnapshot.forEach(doc => {
+      const postData = doc.data();
+      posts.push({
+        id: doc.id,
+        ...postData,
+        contentType: 'post',
+        type: 'post',
+        postType: 'normal' // Flag to differentiate from men reviews
+      });
+    });
+
+    // Process men reviews
+    let reviews = [];
+    reviewsSnapshot.forEach(doc => {
+      const reviewData = doc.data();
+      reviews.push({
+        id: doc.id,
+        ...reviewData,
+        contentType: 'menReview',
+        type: 'menReview',
+        postType: 'menReview', // Flag to differentiate from normal posts
+        // Add post-like fields for consistency
+        title: `Men Review - ${reviewData.label || 'Unknown'}`,
+        body: reviewData.comment || '',
+        authorId: reviewData.voterId,
+        authorNickname: null,
+        upvotes: (reviewData.counts?.green || 0),
+        downvotes: (reviewData.counts?.red || 0),
+        score: (reviewData.counts?.green || 0) - (reviewData.counts?.red || 0),
+        hotScore: 0,
+        commentCount: 0,
+        media: reviewData.media || []
+      });
+    });
+
+    // Get user's vote status for posts
+    const postIds = posts.map(p => p.id);
+    const userVotes = await getUserVotesForPosts(postIds, userId);
+
+    // Add user vote status to posts
+    posts = posts.map(post => ({
+      ...post,
+      userVote: userVotes[post.id] || null,
+    }));
+
+    // Check community membership for posts with communityId
+    const { checkMembership } = require('../communities/service');
+    const communityIds = posts
+      .filter(post => post.communityId)
+      .map(post => post.communityId);
+    
+    // Get unique community IDs
+    const uniqueCommunityIds = [...new Set(communityIds)];
+    
+    // Check membership for all unique communities
+    const membershipPromises = uniqueCommunityIds.map(communityId => 
+      checkMembership(communityId, userId)
+    );
+    const memberships = await Promise.all(membershipPromises);
+    
+    // Create membership map
+    const membershipMap = {};
+    uniqueCommunityIds.forEach((communityId, index) => {
+      membershipMap[communityId] = !!memberships[index];
+    });
+
+    // Add community membership flag to posts
+    posts = posts.map(post => ({
+      ...post,
+      isJoinedCommunity: post.communityId ? membershipMap[post.communityId] || false : null,
+    }));
+
+    // Men reviews don't have communities, so set to null
+    reviews = reviews.map(review => ({
+      ...review,
+      isJoinedCommunity: null,
+    }));
+
+    // Combine posts and reviews
+    let feed = [...posts, ...reviews];
+
+    // Sort unified feed
+    switch (sort) {
+      case 'hot':
+        feed.sort((a, b) => (b.hotScore || 0) - (a.hotScore || 0));
+        break;
+      case 'new':
+        feed.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+        break;
+      case 'top_24h':
+      case 'top_7d':
+      case 'top_all':
+        feed.sort((a, b) => (b.score || 0) - (a.score || 0));
+        break;
+      default:
+        feed.sort((a, b) => {
+          const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+    }
+
+    // Pagination
+    const startIndex = 0;
+    const paged = feed.slice(startIndex, pageSize);
+
+    // Generate next cursor
+    let nextCursor = null;
+    if (feed.length > pageSize) {
+      const last = paged[paged.length - 1];
+      nextCursor = encodeCursor({ id: last.id, createdAt: last.createdAt });
+    }
+
+    const result = {
+      feed: paged,
+      pagination: {
+        pageSize,
+        hasMore: feed.length > pageSize,
+        nextCursor,
+      },
+    };
+    return result;
+  } catch (error) {
+    logger.error('Failed to get unified home feed', {
       error: error.message,
       userId,
       options,
@@ -931,8 +1495,13 @@ module.exports = {
   updatePost,
   deletePost,
   getHomeFeed,
+  getUnifiedHomeFeed,
+  getFallbackFeed,
+  getUnifiedFallbackFeed,
+  getRecommendedCommunities,
   getCommunityPosts,
   togglePostSave,
   getSavedPosts,
   updateCommentCount,
+  getUserVotesForPosts,
 };

@@ -55,7 +55,7 @@ module.exports = function directUpload(options = {}) {
         const { filename } = info;
         const crypto = require('crypto');
         const randomId = crypto.randomBytes(6).toString('hex');
-        const basePath = namespace === 'posts' ? 'uploads/posts' : namespace === 'comments' ? 'uploads/comments' : 'uploads/misc';
+        const basePath = namespace === 'posts' ? 'uploads/posts' : namespace === 'comments' ? 'uploads/comments' : namespace === 'chat' ? 'uploads/chat' : 'uploads/misc';
         const publicId = `${basePath}/${Date.now()}_${randomId}_${filename}`.replace(/\\/g, '/');
         const p = new Promise((resolve, reject) => {
           const uploadStream = cloudinary.uploader.upload_stream(

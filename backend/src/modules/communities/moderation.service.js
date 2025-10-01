@@ -471,27 +471,48 @@ async function getBannedUsers(communityId, options = {}) {
     const hasMore = startIndex + limit < allBans.length;
     const bannedUserIds = paginatedBans.map(b => b.bannedUserId);
 
-    // Get user details for banned users
+    // Get user details for banned users (chunked by 10 due to Firestore 'in' limit)
     const bannedUsers = [];
     if (bannedUserIds.length > 0) {
-      const usersSnapshot = await db.collection('users')
-        .where('uid', 'in', bannedUserIds)
-        .get();
+      const chunkSize = 10;
+      for (let i = 0; i < bannedUserIds.length; i += chunkSize) {
+        const chunk = bannedUserIds.slice(i, i + chunkSize);
+        const usersSnapshot = await db.collection('users')
+          .where('uid', 'in', chunk)
+          .get();
 
-      usersSnapshot.forEach(doc => {
-        const userData = doc.data();
-        const banRecord = paginatedBans.find(b => b.bannedUserId === userData.uid);
-        bannedUsers.push({
-          uid: userData.uid,
-          nickname: userData.nickname,
-          avatarUrl: userData.avatarUrl || null,
-          bio: userData.bio || null,
-          status: userData.status,
-          bannedAt: banRecord.bannedAt,
-          bannedBy: banRecord.bannedBy,
-          reason: banRecord.reason,
+        usersSnapshot.forEach(doc => {
+          const userData = doc.data();
+          const banRecord = paginatedBans.find(b => b.bannedUserId === userData.uid);
+          bannedUsers.push({
+            uid: userData.uid,
+            nickname: userData.nickname,
+            avatarUrl: userData.avatarUrl || null,
+            bio: userData.bio || null,
+            status: userData.status,
+            bannedAt: banRecord?.bannedAt || null,
+            bannedBy: banRecord?.bannedBy || null,
+            reason: banRecord?.reason || null,
+          });
         });
-      });
+      }
+
+      // Include any bans whose user document is missing
+      const foundIds = new Set(bannedUsers.map(u => u.uid));
+      for (const ban of paginatedBans) {
+        if (!foundIds.has(ban.bannedUserId)) {
+          bannedUsers.push({
+            uid: ban.bannedUserId,
+            nickname: null,
+            avatarUrl: null,
+            bio: null,
+            status: null,
+            bannedAt: ban.bannedAt,
+            bannedBy: ban.bannedBy,
+            reason: ban.reason,
+          });
+        }
+      }
     }
 
     const nextCursor = hasMore ? paginatedBans[paginatedBans.length - 1]?.id : null;

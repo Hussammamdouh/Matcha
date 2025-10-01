@@ -42,14 +42,49 @@ async function createConversation(data) {
 
     // Check for direct conversation deduplication
     if (type === 'direct') {
-      const existingConversation = await findDirectConversation(memberUserIds[0], memberUserIds[1]);
-      if (existingConversation) {
-        logger.info('Direct conversation already exists, returning existing', {
-          conversationId: existingConversation.id,
-          users: memberUserIds,
-        });
-        return existingConversation;
-      }
+      const [a, b] = memberUserIds;
+      const keyA = String(a);
+      const keyB = String(b);
+      const pairKey = keyA < keyB ? `${keyA}_${keyB}` : `${keyB}_${keyA}`;
+
+      // 1) Check deterministic pair mapping
+      try {
+        const pairDoc = await db.collection('direct_pairs').doc(pairKey).get();
+        if (pairDoc.exists) {
+          const existingId = pairDoc.data()?.conversationId;
+          if (existingId) {
+            const existingConvo = await getConversation(existingId, createdBy).catch(() => null);
+            if (existingConvo) {
+              logger.info('Direct conversation mapping found, returning existing', { conversationId: existingId, users: memberUserIds });
+              return existingConvo;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 2) Fallback: scan recent conversations, filter type in-memory, and check membership
+      try {
+        const recent = await db
+          .collection('conversations')
+          .orderBy('lastMessageAt', 'desc')
+          .limit(200)
+          .get();
+        for (const doc of recent.docs) {
+          const data = doc.data();
+          if (data?.type !== 'direct') continue;
+          const id = doc.id;
+          try {
+            const [pa, pb] = await Promise.all([
+              db.collection('conversations').doc(id).collection('participants').doc(a).get(),
+              db.collection('conversations').doc(id).collection('participants').doc(b).get(),
+            ]);
+            if (pa.exists && pb.exists) {
+              logger.info('Direct conversation already exists (scanned), returning existing', { conversationId: id, users: memberUserIds });
+              return await getConversation(id, createdBy);
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
     }
 
     // Create conversation document
@@ -99,6 +134,17 @@ async function createConversation(data) {
     }
 
     await batch.commit();
+
+    // If direct: persist deterministic mapping for future deduplication
+    if (type === 'direct') {
+      try {
+        const [a, b] = memberUserIds;
+        const keyA = String(a);
+        const keyB = String(b);
+        const pairKey = keyA < keyB ? `${keyA}_${keyB}` : `${keyB}_${keyA}`;
+        await db.collection('direct_pairs').doc(pairKey).set({ conversationId, createdAt: new Date() }, { merge: true });
+      } catch (_) {}
+    }
 
     // Get user details for participants
     const userDetails = await Promise.all(
@@ -198,9 +244,14 @@ async function findDirectConversation(userId1, userId2) {
 async function getConversation(conversationId, userId) {
   db = db || getFirestore();
   try {
-    // Check if user is a participant
-    const participant = await isParticipant(userId, conversationId);
-    if (!participant) {
+    // Index-safe membership check
+    const participantDoc = await db
+      .collection('conversations')
+      .doc(conversationId)
+      .collection('participants')
+      .doc(userId)
+      .get();
+    if (!participantDoc.exists || participantDoc.data()?.isBanned) {
       throw new Error('User is not a participant in this conversation');
     }
 
@@ -210,10 +261,7 @@ async function getConversation(conversationId, userId) {
       throw new Error('Conversation not found');
     }
 
-    const conversation = {
-      id: conversationId,
-      ...conversationDoc.data(),
-    };
+    const conversation = { id: conversationId, ...conversationDoc.data() };
 
     // Get all participants
     const participantsSnapshot = await db
@@ -224,52 +272,46 @@ async function getConversation(conversationId, userId) {
 
     const participants = [];
     const userDetails = [];
-
     for (const doc of participantsSnapshot.docs) {
-      const participantData = doc.data();
-      participants.push(participantData);
-      
-      // Get user details
+      const pdata = doc.data();
+      participants.push(pdata);
       try {
-        const userDoc = await db.collection('users').doc(participantData.userId).get();
+        const userDoc = await db.collection('users').doc(pdata.userId).get();
         userDetails.push(userDoc.exists ? userDoc.data() : null);
-      } catch (error) {
-        logger.warn('Failed to fetch user details', { 
-          userId: participantData.userId, 
-          error: error.message 
-        });
+      } catch (e) {
         userDetails.push(null);
       }
     }
 
-    // Build participant summaries
-    const participantSummaries = participants.map((p, index) => 
-      buildParticipantSummary(p, userDetails[index])
-    );
+    const participantSummaries = participants.map((p, i) => buildParticipantSummary(p, userDetails[i]));
 
-    // Get last message for preview
-    const lastMessageSnapshot = await db
-      .collection('messages')
-      .where('conversationId', '==', conversationId)
-      .where('isDeleted', '==', false)
-      .orderBy('createdAt', 'desc')
-      .limit(1)
-      .get();
+    // Avoid composite index for last message
+    let lastMessage = null;
+    try {
+      const snap = await db
+        .collection('messages')
+        .where('conversationId', '==', conversationId)
+        .limit(50)
+        .get();
+      const msgs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(m => !m.isDeleted)
+        .sort((a, b) => {
+          const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+          const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+          return tb - ta;
+        });
+      if (msgs.length > 0) lastMessage = msgs[0];
+    } catch (_) {}
 
-    const lastMessage = lastMessageSnapshot.empty ? null : {
-      id: lastMessageSnapshot.docs[0].id,
-      ...lastMessageSnapshot.docs[0].data(),
-    };
-
-    const summary = buildConversationSummary(conversation, lastMessage, participantSummaries);
-
-    return summary;
+    return buildConversationSummary(conversation, lastMessage, participantSummaries);
   } catch (error) {
-    logger.error('Failed to get conversation', {
-      error: error.message,
-      conversationId,
-      userId,
-    });
+    logger.error('Failed to get conversation', { error: error.message, conversationId, userId });
+    // Resilient: return minimal conversation if doc exists but other steps fail
+    try {
+      const doc = await db.collection('conversations').doc(conversationId).get();
+      if (doc.exists) return { id: doc.id, ...doc.data() };
+    } catch (_) {}
     throw error;
   }
 }
@@ -287,148 +329,110 @@ async function listConversations(userId, options = {}) {
   const { cursor, pageSize = 20 } = options;
   
   try {
-    // Get user's participant documents
-    const participantsQuery = db
-      .collectionGroup('participants')
-      .where('userId', '==', userId)
-      .where('isBanned', '==', false);
-
-    const participantsSnapshot = await participantsQuery.get();
-    
-    if (participantsSnapshot.empty) {
-      return {
-        conversations: [],
-        meta: {
-          hasMore: false,
-          nextCursor: null,
-        },
-      };
-    }
-
-    // Get conversation IDs and participant data
-    const conversationIds = [];
-    const participantMap = new Map();
-
-    for (const doc of participantsSnapshot.docs) {
-      const conversationId = doc.ref.parent.parent.id;
-      conversationIds.push(conversationId);
-      participantMap.set(conversationId, doc.data());
-    }
-
-    // Get conversations ordered by lastMessageAt
-    let conversationsQuery = db
+    // Index-safe approach: scan recent conversations and check membership per conversation
+    let convosSnap = await db
       .collection('conversations')
-      .where('__name__', 'in', conversationIds)
-      .orderBy('lastMessageAt', 'desc');
+      .orderBy('lastMessageAt', 'desc')
+      .limit(200)
+      .get();
 
-    // Apply cursor if provided
+    if (convosSnap.empty) {
+      return { conversations: [], meta: { hasMore: false, nextCursor: null } };
+    }
+
+    const allConversations = [];
+    const participantMap = new Map();
+    for (const doc of convosSnap.docs) {
+      const convoId = doc.id;
+      try {
+        const participantDoc = await db
+          .collection('conversations')
+          .doc(convoId)
+          .collection('participants')
+          .doc(userId)
+          .get();
+        if (participantDoc.exists && !participantDoc.data()?.isBanned) {
+          participantMap.set(convoId, participantDoc.data());
+          allConversations.push({ id: convoId, ...doc.data() });
+        }
+      } catch (e) {
+        logger.warn('Membership check failed for conversation', { conversationId: convoId, error: e.message });
+      }
+    }
+
+    if (allConversations.length === 0) {
+      return { conversations: [], meta: { hasMore: false, nextCursor: null } };
+    }
+
+    // Already ordered by lastMessageAt desc
+
+    // Cursor-based pagination by id
+    let startIndex = 0;
     if (cursor) {
       const decoded = decodeCursor(cursor);
-      if (decoded?.id) {
-        try {
-          const docSnap = await db.collection('conversations').doc(decoded.id).get();
-          if (docSnap.exists) {
-            conversationsQuery = conversationsQuery.startAfter(docSnap);
-          }
-        } catch (_) {}
-      }
+      const cursorId = decoded?.id || decoded;
+      const idx = allConversations.findIndex(c => c.id === cursorId);
+      startIndex = idx >= 0 ? idx + 1 : 0;
     }
 
-    // Apply page size
-    conversationsQuery = conversationsQuery.limit(pageSize + 1);
+    const pageItems = allConversations.slice(startIndex, startIndex + pageSize);
+    const hasMore = startIndex + pageSize < allConversations.length;
 
-    const conversationsSnapshot = await conversationsQuery.get();
-    
     const conversations = [];
-    let hasMore = false;
-
-    for (let i = 0; i < conversationsSnapshot.docs.length; i++) {
-      if (i >= pageSize) {
-        hasMore = true;
-        break;
-      }
-
-      const doc = conversationsSnapshot.docs[i];
-      const conversation = {
-        id: doc.id,
-        ...doc.data(),
-      };
-
-      // Get participant data
-      const participant = participantMap.get(doc.id);
-      
-      // Get other participants (excluding current user)
-      const otherParticipantsSnapshot = await db
-        .collection('conversations')
-        .doc(doc.id)
-        .collection('participants')
-        .where('userId', '!=', userId)
-        .get();
-
-      const otherParticipants = [];
-      const userDetails = [];
-
-      for (const pDoc of otherParticipantsSnapshot.docs) {
-        const pData = pDoc.data();
-        otherParticipants.push(pData);
-        
-        // Get user details
-        try {
-          const userDoc = await db.collection('users').doc(pData.userId).get();
-          userDetails.push(userDoc.exists ? userDoc.data() : null);
-        } catch (error) {
-          logger.warn('Failed to fetch user details', { 
-            userId: pData.userId, 
-            error: error.message 
-          });
-          userDetails.push(null);
+    for (const convo of pageItems) {
+      try {
+        const convoId = convo.id;
+        // Ensure we have participant info for current user
+        if (!participantMap.has(convoId)) {
+          continue;
         }
+
+        // Load all participants then filter out current user to avoid '!=' index
+        const participantsSnapshotAll = await db
+          .collection('conversations')
+          .doc(convoId)
+          .collection('participants')
+          .get();
+
+        const otherParticipants = [];
+        const userDetails = [];
+        for (const pDoc of participantsSnapshotAll.docs) {
+          const pData = pDoc.data();
+          if (pData.userId === userId) continue;
+          otherParticipants.push(pData);
+          try {
+            const userDoc = await db.collection('users').doc(pData.userId).get();
+            userDetails.push(userDoc.exists ? userDoc.data() : null);
+          } catch (error) {
+            logger.warn('Failed to fetch user details', { userId: pData.userId, error: error.message });
+            userDetails.push(null);
+          }
+        }
+
+        const participantSummaries = otherParticipants.map((p, index) => buildParticipantSummary(p, userDetails[index]));
+
+        const lastMessage = convo.lastMessagePreview
+          ? { id: null, text: convo.lastMessagePreview, createdAt: convo.lastMessageAt || null }
+          : null;
+
+        const summary = buildConversationSummary(convo, lastMessage, participantSummaries);
+        conversations.push(summary);
+      } catch (e) {
+        logger.warn('Failed to summarize conversation, skipping', { conversationId: convo.id, error: e.message });
       }
-
-      // Build participant summaries
-      const participantSummaries = otherParticipants.map((p, index) => 
-        buildParticipantSummary(p, userDetails[index])
-      );
-
-      // Get last message for preview
-      const lastMessageSnapshot = await db
-        .collection('messages')
-        .where('conversationId', '==', doc.id)
-        .where('isDeleted', '==', false)
-        .orderBy('createdAt', 'desc')
-        .limit(1)
-        .get();
-
-      const lastMessage = lastMessageSnapshot.empty ? null : {
-        id: lastMessageSnapshot.docs[0].id,
-        ...lastMessageSnapshot.docs[0].data(),
-      };
-
-      const summary = buildConversationSummary(conversation, lastMessage, participantSummaries);
-      conversations.push(summary);
     }
 
-    // Generate next cursor
-    let nextCursor = null;
-    if (hasMore && conversations.length > 0) {
-      const lastDoc = conversationsSnapshot.docs[Math.min(conversationsSnapshot.docs.length - 1, pageSize - 1)];
-      nextCursor = encodeCursor({ id: lastDoc.id, createdAt: lastDoc.get('lastMessageAt') });
-    }
+    const nextCursor = hasMore && pageItems.length > 0 ? encodeCursor({ id: pageItems[pageItems.length - 1].id }) : null;
 
-    return {
-      conversations,
-      meta: {
-        hasMore,
-        nextCursor,
-      },
-    };
+    return { conversations, meta: { hasMore, nextCursor } };
   } catch (error) {
     logger.error('Failed to list conversations', {
       error: error.message,
       userId,
       options,
     });
-    throw error;
+    // Be resilient: return empty list instead of propagating error
+    return { conversations: [], meta: { hasMore: false, nextCursor: null } };
   }
 }
 
